@@ -19,6 +19,9 @@ function buildPoolConfig(databaseUrl: string): PoolConfig {
     connectionString: databaseUrl,
     ...(ssl ? { ssl } : {}),
     max: resolvePoolMax(),
+    connectionTimeoutMillis: 10_000,
+    idleTimeoutMillis: 10_000,
+    keepAlive: true,
   };
 }
 
