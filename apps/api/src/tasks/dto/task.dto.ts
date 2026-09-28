@@ -5,11 +5,11 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
-  IsUUID,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Category, Priority, TaskStatus } from '@ethio/database';
 import { Type } from 'class-transformer';
+import { IsCuid } from '../../common/utils/cuid.util';
 
 export class CreateTaskDto {
   @ApiProperty()
@@ -39,7 +39,7 @@ export class CreateTaskDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUUID()
+  @IsCuid()
   divisionId?: string;
 
   @ApiPropertyOptional()
@@ -49,7 +49,7 @@ export class CreateTaskDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUUID()
+  @IsCuid()
   assigneeId?: string;
 
   @ApiPropertyOptional({ type: [String] })
@@ -88,7 +88,7 @@ export class UpdateTaskDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUUID()
+  @IsCuid()
   divisionId?: string | null;
 
   @ApiPropertyOptional()
@@ -98,7 +98,7 @@ export class UpdateTaskDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUUID()
+  @IsCuid()
   assigneeId?: string | null;
 
   @ApiPropertyOptional({ type: [String] })
@@ -131,7 +131,7 @@ export class TaskFiltersDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUUID()
+  @IsCuid()
   assigneeId?: string;
 
   @ApiPropertyOptional()
