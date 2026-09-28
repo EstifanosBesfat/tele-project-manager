@@ -4,9 +4,6 @@ import path from 'path';
 const nextConfig: NextConfig = {
   output: 'standalone',
   outputFileTracingRoot: path.join(__dirname, '../..'),
-  typescript: {
-    ignoreBuildErrors: true,
-  },
   images: {
     dangerouslyAllowSVG: true,
     contentDispositionType: 'attachment',
