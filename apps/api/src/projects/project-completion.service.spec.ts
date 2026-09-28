@@ -116,6 +116,39 @@ describe('ProjectCompletionService.syncProjectCompletion', () => {
     expect(db.activityLog.create).not.toHaveBeenCalled();
   });
 
+  it('reopens a completed project whose progress is below 100%', async () => {
+    const prisma = {
+      project: {
+        findUnique: jest.fn().mockResolvedValue({
+          status: ProjectStatus.COMPLETED,
+        }),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      task: {
+        findMany: jest.fn().mockResolvedValue([
+          { status: TaskStatus.DONE },
+          { status: TaskStatus.DONE },
+          { status: TaskStatus.TODO },
+        ]),
+      },
+    };
+    const service = new ProjectCompletionService(
+      prisma as unknown as PrismaService,
+      stubNotifications() as unknown as NotificationsService,
+    );
+
+    await expect(service.getProjectProgress('proj-1')).resolves.toEqual({
+      total: 3,
+      done: 2,
+      percent: 67,
+      status: ProjectStatus.ACTIVE,
+    });
+    expect(prisma.project.update).toHaveBeenCalledWith({
+      where: { id: 'proj-1' },
+      data: { status: ProjectStatus.ACTIVE },
+    });
+  });
+
   it('does not write a second auto-complete when already COMPLETED', async () => {
     const db = createDbMock(
       [{ status: TaskStatus.DONE }],

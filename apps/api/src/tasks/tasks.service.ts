@@ -108,9 +108,7 @@ export class TasksService {
       },
     });
 
-    if (dto.status === TaskStatus.DONE || task.status === TaskStatus.DONE) {
-      await this.projectCompletion.syncProjectCompletion(projectId, user.id);
-    }
+    await this.projectCompletion.syncProjectCompletion(projectId, user.id);
 
     await this.notifyAssigneeIfChanged(user, projectId, task, null);
 

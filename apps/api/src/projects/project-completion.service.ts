@@ -125,12 +125,22 @@ export class ProjectCompletionService {
     const total = tasks.length;
     const done = tasks.filter((task) => task.status === TaskStatus.DONE).length;
     const percent = total === 0 ? 0 : Math.round((done / total) * 100);
+    const allDone = total > 0 && done === total;
+
+    let status = project?.status ?? ProjectStatus.ACTIVE;
+    if (project && total > 0 && !allDone && status === ProjectStatus.COMPLETED) {
+      await this.prisma.project.update({
+        where: { id: projectId },
+        data: { status: ProjectStatus.ACTIVE },
+      });
+      status = ProjectStatus.ACTIVE;
+    }
 
     return {
       total,
       done,
       percent,
-      status: project?.status ?? ProjectStatus.ACTIVE,
+      status,
     };
   }
 }

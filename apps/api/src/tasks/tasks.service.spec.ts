@@ -1,5 +1,6 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
-import { ProjectRole, Role } from '@ethio/database';
+import { ProjectRole, Role, TaskStatus } from '@ethio/database';
+import { CreateTaskDto } from './dto/task.dto';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ProjectCompletionService } from '../projects/project-completion.service';
@@ -12,6 +13,7 @@ function createPrismaMock() {
     task: {
       findUnique: jest.fn(),
       findMany: jest.fn().mockResolvedValue([]),
+      create: jest.fn().mockResolvedValue({}),
       delete: jest.fn().mockResolvedValue({}),
     },
     projectMember: {
@@ -42,6 +44,42 @@ function adminUser(): AuthUser {
     name: 'Admin',
   };
 }
+
+describe('TasksService.create', () => {
+  it('syncs project completion even when the new task is not done', async () => {
+    const prismaMock = createPrismaMock();
+    prismaMock.task.create = jest.fn().mockResolvedValue({
+      id: 'task-2',
+      title: 'Verify remaining settlements',
+      status: TaskStatus.TODO,
+      assigneeId: null,
+    });
+
+    const projectCompletion = {
+      syncProjectCompletion: jest.fn().mockResolvedValue({}),
+    };
+    const projectsService = {
+      ensureCanAccess: jest.fn().mockResolvedValue(undefined),
+    };
+    const service = new TasksService(
+      prismaMock as unknown as PrismaService,
+      projectsService as unknown as ProjectsService,
+      projectCompletion as unknown as ProjectCompletionService,
+      stubNotifications(),
+    );
+
+    const dto = new CreateTaskDto();
+    dto.title = 'Verify remaining settlements';
+    dto.status = TaskStatus.TODO;
+
+    await service.create('proj-1', dto, adminUser());
+
+    expect(projectCompletion.syncProjectCompletion).toHaveBeenCalledWith(
+      'proj-1',
+      'admin-1',
+    );
+  });
+});
 
 describe('TasksService.remove', () => {
   it('deletes the task, writes a project-level log, and syncs completion in one transaction', async () => {
