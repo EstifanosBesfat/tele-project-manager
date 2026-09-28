@@ -27,7 +27,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <CommandPalette />
         </header>
 
-        <main className="flex-1 overflow-y-auto p-5">
+        <main className="min-h-0 flex-1 overflow-y-auto p-5">
           <AuthGuard>{children}</AuthGuard>
         </main>
       </SidebarInset>

@@ -45,7 +45,7 @@ export function SidebarProvider({ children, className, ...props }: React.HTMLAtt
     <SidebarContext.Provider value={{ open, setOpen, isMobile }}>
       <div
         data-slot="sidebar-provider"
-        className={cn("flex min-h-svh w-full", className)}
+        className={cn("flex h-svh w-full overflow-hidden", className)}
         {...props}
       >
         {children}
@@ -86,7 +86,7 @@ export function Sidebar({ children, className, ...props }: React.HTMLAttributes<
       data-slot="sidebar"
       data-state={open ? "expanded" : "collapsed"}
       className={cn(
-        "group/sidebar relative flex h-svh flex-col border-r bg-sidebar text-sidebar-foreground transition-[width] duration-200 ease-in-out",
+        "group/sidebar sticky top-0 flex h-svh shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground transition-[width] duration-200 ease-in-out",
         open ? "w-64" : "w-14",
         className,
       )}
@@ -175,7 +175,7 @@ export function SidebarInset({ className, ...props }: React.HTMLAttributes<HTMLD
   return (
     <div
       data-slot="sidebar-inset"
-      className={cn("flex flex-1 flex-col min-w-0 overflow-hidden", className)}
+      className={cn("flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden", className)}
       {...props}
     />
   )
