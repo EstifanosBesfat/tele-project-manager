@@ -10,7 +10,7 @@ import {
   resolveMentionedUserIds,
 } from '../common/utils/mentions.util';
 import { AuthUser } from '../common/types/auth-user.type';
-import { NotificationBusService } from '../notifications/notification-bus.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { ProjectsService } from '../projects/projects.service';
 import { CreateCommentDto } from './dto/create-comment.dto';
 
@@ -19,7 +19,7 @@ export class CommentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly projectsService: ProjectsService,
-    private readonly notificationBus: NotificationBusService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async create(taskId: string, dto: CreateCommentDto, user: AuthUser) {
@@ -106,17 +106,13 @@ export class CommentsService {
     const mentionedUserIds = resolveMentionedUserIds(handles, users, author.id);
 
     for (const userId of mentionedUserIds) {
-      const notification = await this.prisma.notification.create({
-        data: {
-          userId,
-          projectId,
-          taskId,
-          type: 'MENTION',
-          message: `${author.name ?? author.email} mentioned you on "${taskTitle}"`,
-        },
+      await this.notifications.notify({
+        userId,
+        projectId,
+        taskId,
+        type: 'MENTION',
+        message: `${author.name ?? author.email} mentioned you on "${taskTitle}"`,
       });
-
-      this.notificationBus.emitToUser(userId, 'notification', notification);
     }
   }
 }

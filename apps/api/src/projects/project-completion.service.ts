@@ -1,16 +1,22 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma, ProjectStatus, TaskStatus } from '@ethio/database';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 type CompletionDb = {
   task: Pick<Prisma.TransactionClient['task'], 'findMany'>;
   project: Pick<Prisma.TransactionClient['project'], 'findUnique' | 'update'>;
   activityLog: Pick<Prisma.TransactionClient['activityLog'], 'create'>;
+  projectMember: Pick<Prisma.TransactionClient['projectMember'], 'findMany'>;
+  notification: Pick<Prisma.TransactionClient['notification'], 'create'>;
 };
 
 @Injectable()
 export class ProjectCompletionService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   async syncProjectCompletion(
     projectId: string,
@@ -24,7 +30,7 @@ export class ProjectCompletionService {
       }),
       db.project.findUnique({
         where: { id: projectId },
-        select: { id: true, status: true },
+        select: { id: true, status: true, name: true },
       }),
     ]);
 
@@ -50,6 +56,14 @@ export class ProjectCompletionService {
         },
       });
 
+      await this.notifyProjectMembers(
+        projectId,
+        actorId,
+        'PROJECT_AUTO_COMPLETED',
+        `Project "${project.name}" was completed`,
+        db,
+      );
+
       return { ...project, status: ProjectStatus.COMPLETED };
     }
 
@@ -73,6 +87,27 @@ export class ProjectCompletionService {
     }
 
     return project;
+  }
+
+  private async notifyProjectMembers(
+    projectId: string,
+    actorId: string,
+    type: string,
+    message: string,
+    db: CompletionDb,
+  ) {
+    const members = await db.projectMember.findMany({
+      where: { projectId },
+      select: { userId: true },
+    });
+
+    for (const member of members) {
+      if (member.userId === actorId) continue;
+      await this.notifications.notify(
+        { userId: member.userId, projectId, type, message },
+        db,
+      );
+    }
   }
 
   async getProjectProgress(projectId: string) {

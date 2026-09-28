@@ -7,6 +7,7 @@ import {
 import { Prisma, ProjectRole, Role } from '@ethio/database';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthUser } from '../common/types/auth-user.type';
+import { NotificationsService } from '../notifications/notifications.service';
 import { InviteMemberDto, UpdateMemberDto } from './dto/member.dto';
 import { CreateProjectDto, UpdateProjectDto } from './dto/project.dto';
 import { ProjectCompletionService } from './project-completion.service';
@@ -41,6 +42,7 @@ export class ProjectsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly projectCompletion: ProjectCompletionService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async findAll(user: AuthUser) {
@@ -174,7 +176,7 @@ export class ProjectsService {
       });
     }
 
-    return this.prisma.projectMember.create({
+    const membership = await this.prisma.projectMember.create({
       data: {
         projectId,
         userId: memberUser.id,
@@ -184,6 +186,21 @@ export class ProjectsService {
         user: { select: { id: true, name: true, email: true, image: true } },
       },
     });
+
+    if (memberUser.id !== user.id) {
+      const project = await this.prisma.project.findUnique({
+        where: { id: projectId },
+        select: { name: true },
+      });
+      await this.notifications.notify({
+        userId: memberUser.id,
+        projectId,
+        type: 'PROJECT_INVITED',
+        message: `${user.name ?? user.email} added you to "${project?.name ?? 'a project'}"`,
+      });
+    }
+
+    return membership;
   }
 
   async updateMember(

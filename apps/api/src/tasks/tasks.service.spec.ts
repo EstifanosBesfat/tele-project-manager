@@ -1,5 +1,6 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { ProjectRole, Role } from '@ethio/database';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ProjectCompletionService } from '../projects/project-completion.service';
 import { ProjectsService } from '../projects/projects.service';
@@ -29,6 +30,10 @@ function createPrismaMock() {
   return prismaMock;
 }
 
+function stubNotifications(): NotificationsService {
+  return { notify: jest.fn().mockResolvedValue(undefined) } as unknown as NotificationsService;
+}
+
 function adminUser(): AuthUser {
   return {
     id: 'admin-1',
@@ -54,6 +59,7 @@ describe('TasksService.remove', () => {
       prismaMock as unknown as PrismaService,
       {} as ProjectsService,
       projectCompletion as unknown as ProjectCompletionService,
+      stubNotifications(),
     );
 
     await service.remove('task-1', adminUser());
@@ -89,6 +95,7 @@ describe('TasksService.remove', () => {
       prismaMock as unknown as PrismaService,
       {} as ProjectsService,
       projectCompletion as unknown as ProjectCompletionService,
+      stubNotifications(),
     );
 
     await expect(service.remove('missing', adminUser())).rejects.toBeInstanceOf(
@@ -115,6 +122,7 @@ describe('TasksService.remove', () => {
       prismaMock as unknown as PrismaService,
       {} as ProjectsService,
       projectCompletion as unknown as ProjectCompletionService,
+      stubNotifications(),
     );
 
     await expect(
@@ -151,6 +159,7 @@ describe('TasksService.exportCsv', () => {
       prismaMock as unknown as PrismaService,
       projectsService as unknown as ProjectsService,
       {} as ProjectCompletionService,
+      stubNotifications(),
     );
 
     const csv = await service.exportCsv('proj-1', {}, adminUser());

@@ -6,6 +6,7 @@ import {
 import { Prisma, ProjectRole, Role, TaskStatus } from '@ethio/database';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthUser } from '../common/types/auth-user.type';
+import { NotificationsService } from '../notifications/notifications.service';
 import { ProjectCompletionService } from '../projects/project-completion.service';
 import { ProjectsService } from '../projects/projects.service';
 import { CreateTaskDto, TaskFiltersDto, UpdateTaskDto } from './dto/task.dto';
@@ -44,6 +45,7 @@ export class TasksService {
     private readonly prisma: PrismaService,
     private readonly projectsService: ProjectsService,
     private readonly projectCompletion: ProjectCompletionService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async findByProject(projectId: string, filters: TaskFiltersDto, user: AuthUser) {
@@ -110,6 +112,8 @@ export class TasksService {
       await this.projectCompletion.syncProjectCompletion(projectId, user.id);
     }
 
+    await this.notifyAssigneeIfChanged(user, projectId, task, null);
+
     return task;
   }
 
@@ -130,7 +134,7 @@ export class TasksService {
   async update(taskId: string, dto: UpdateTaskDto, user: AuthUser) {
     const existing = await this.prisma.task.findUnique({
       where: { id: taskId },
-      select: { id: true, projectId: true, status: true },
+      select: { id: true, projectId: true, status: true, assigneeId: true },
     });
 
     if (!existing) {
@@ -185,6 +189,13 @@ export class TasksService {
         user.id,
       );
     }
+
+    await this.notifyAssigneeIfChanged(
+      user,
+      existing.projectId,
+      task,
+      existing.assigneeId,
+    );
 
     return task;
   }
@@ -300,6 +311,24 @@ export class TasksService {
       return `"${value.replace(/"/g, '""')}"`;
     }
     return value;
+  }
+
+  private async notifyAssigneeIfChanged(
+    actor: AuthUser,
+    projectId: string,
+    task: { id: string; title: string; assigneeId: string | null },
+    previousAssigneeId: string | null,
+  ) {
+    if (!task.assigneeId || task.assigneeId === actor.id) return;
+    if (task.assigneeId === previousAssigneeId) return;
+
+    await this.notifications.notify({
+      userId: task.assigneeId,
+      projectId,
+      taskId: task.id,
+      type: 'TASK_ASSIGNED',
+      message: `${actor.name ?? actor.email} assigned you to "${task.title}"`,
+    });
   }
 
   private async ensureCanModifyTask(projectId: string, user: AuthUser) {

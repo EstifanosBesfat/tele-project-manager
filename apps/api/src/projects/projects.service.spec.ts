@@ -1,5 +1,6 @@
 import { ForbiddenException } from '@nestjs/common';
 import { Role } from '@ethio/database';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthUser } from '../common/types/auth-user.type';
 import { ProjectCompletionService } from './project-completion.service';
@@ -26,13 +27,18 @@ function createPrismaMock() {
   };
 }
 
+function buildService(prismaMock: ReturnType<typeof createPrismaMock>) {
+  return new ProjectsService(
+    prismaMock as unknown as PrismaService,
+    {} as ProjectCompletionService,
+    {} as NotificationsService,
+  );
+}
+
 describe('ProjectsService access', () => {
   it('lists every project for ADMIN and only memberships for a regular user', async () => {
     const prismaMock = createPrismaMock();
-    const service = new ProjectsService(
-      prismaMock as unknown as PrismaService,
-      {} as ProjectCompletionService,
-    );
+    const service = buildService(prismaMock);
 
     await service.findAll(buildUser({ role: Role.ADMIN }));
     expect(prismaMock.project.findMany).toHaveBeenCalledWith(
@@ -49,10 +55,7 @@ describe('ProjectsService access', () => {
 
   it('lets ADMIN access any project without a membership lookup', async () => {
     const prismaMock = createPrismaMock();
-    const service = new ProjectsService(
-      prismaMock as unknown as PrismaService,
-      {} as ProjectCompletionService,
-    );
+    const service = buildService(prismaMock);
 
     await expect(
       service.ensureCanAccess('proj-1', buildUser({ role: Role.ADMIN })),
@@ -65,10 +68,7 @@ describe('ProjectsService access', () => {
     prismaMock.projectMember.findUnique
       .mockResolvedValueOnce({ id: 'mem-1' })
       .mockResolvedValueOnce(null);
-    const service = new ProjectsService(
-      prismaMock as unknown as PrismaService,
-      {} as ProjectCompletionService,
-    );
+    const service = buildService(prismaMock);
     const user = buildUser({ id: 'member-1' });
 
     await expect(service.ensureCanAccess('proj-1', user)).resolves.toBeUndefined();
