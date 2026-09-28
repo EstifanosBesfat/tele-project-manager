@@ -292,8 +292,8 @@ export default function ProjectDetailPage({
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-4">
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-3">
+        <div className="min-w-0 space-y-4 lg:col-span-2">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <h2 className="text-lg font-semibold text-gray-800">Tasks</h2>
             <div className="flex rounded-md border border-gray-200 overflow-hidden text-sm">
@@ -382,7 +382,7 @@ export default function ProjectDetailPage({
           )}
         </div>
 
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-6">
           <div className="bg-white rounded-lg border border-gray-200 p-4">
             <h3 className="text-sm font-semibold text-gray-800 mb-3">
               Members ({project.members?.length ?? 0})
