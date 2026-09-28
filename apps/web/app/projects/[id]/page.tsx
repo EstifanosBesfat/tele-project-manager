@@ -23,10 +23,24 @@ import PriorityBadge from '@/app/components/PriorityBadge';
 import OverdueBadge from '@/app/components/OverdueBadge';
 import Avatar from '@/app/components/Avatar';
 import { getDueDateStatus } from '@/app/lib/dueDateUtils';
-import { getToken } from '@/lib/auth-storage';
 import { buttonVariants } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 const taskColumnHelper = createColumnHelper<Task>();
+
+function formatProjectDate(value: string) {
+  return new Date(value).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
 
 function useRouteId() {
   const params = useParams<{ id: string }>();
@@ -42,6 +56,7 @@ export default function ProjectDetailPage() {
   const [updatingTaskId, setUpdatingTaskId] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState('');
+  const [addMemberOpen, setAddMemberOpen] = useState(false);
 
   const {
     data: project,
@@ -244,9 +259,8 @@ export default function ProjectDetailPage() {
     setExporting(true);
     setExportError('');
     try {
-      const token = getToken();
       const res = await fetch(`${API_BASE_URL}/projects/${id}/tasks/export`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: 'include',
       });
       if (!res.ok) throw new Error('Export failed');
       const blob = await res.blob();
@@ -264,18 +278,18 @@ export default function ProjectDetailPage() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
+    <div className="space-y-6">
       <div>
         <Link href="/projects" className="text-sm text-secondary hover:underline">
           ← Back to projects
         </Link>
       </div>
 
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <div className="flex flex-col sm:flex-row gap-6">
-          <ProgressRing percent={progress?.percent ?? 0} size={80} strokeWidth={6} />
-          <div className="flex-1">
-            <div className="flex flex-wrap items-center gap-2 mb-2">
+      <div className="rounded-lg border border-gray-200 bg-white p-4 sm:p-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+          <ProgressRing percent={progress?.percent ?? 0} size={64} strokeWidth={6} />
+          <div className="min-w-0 flex-1">
+            <div className="mb-1 flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-bold text-gray-900">{project.name}</h1>
               <ProjectStatusBadge status={displayStatus} />
               {project.dueDate &&
@@ -284,25 +298,16 @@ export default function ProjectDetailPage() {
                   <OverdueBadge />
                 )}
             </div>
-            <p className="text-gray-600 text-sm mb-3">{project.description}</p>
-            <div className="flex flex-wrap gap-4 text-sm text-gray-500">
-              {project.division && <span>Division: {project.division.name}</span>}
-              {project.dueDate && (
-                <span>
-                  Due:{' '}
-                  {new Date(project.dueDate).toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric',
-                  })}
-                </span>
-              )}
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
+              {project.division && <span>{project.division.name}</span>}
+              {project.dueDate && <span>Due {formatProjectDate(project.dueDate)}</span>}
               <span>
                 {progress?.done ?? 0}/{progress?.total ?? 0} tasks done
               </span>
+              <span>{progress?.percent ?? 0}% complete</span>
             </div>
           </div>
-          <div className="flex flex-col gap-2 shrink-0">
+          <div className="flex shrink-0 flex-wrap gap-2">
             <Link
               href={`/projects/${id}/tasks/new`}
               className={buttonVariants({
@@ -340,81 +345,75 @@ export default function ProjectDetailPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-4">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <h2 className="text-lg font-semibold text-gray-800">Tasks</h2>
-            <div className="flex rounded-md border border-gray-200 overflow-hidden text-sm">
-              <button
-                type="button"
-                onClick={() => setViewMode('kanban')}
-                className={`px-3 py-1.5 ${viewMode === 'kanban' ? 'bg-primary text-primary-foreground' : 'bg-white text-gray-600'}`}
-              >
-                Kanban
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('table')}
-                className={`px-3 py-1.5 ${viewMode === 'table' ? 'bg-primary text-primary-foreground' : 'bg-white text-gray-600'}`}
-              >
-                Table
-              </button>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
+        <div className="min-w-0 space-y-6">
+          <section className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-lg font-semibold text-gray-800">Tasks</h2>
+              <div className="flex overflow-hidden rounded-md border border-gray-200 text-sm">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('kanban')}
+                  className={`px-3 py-1.5 ${viewMode === 'kanban' ? 'bg-primary text-primary-foreground' : 'bg-white text-gray-600'}`}
+                >
+                  Kanban
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('table')}
+                  className={`px-3 py-1.5 ${viewMode === 'table' ? 'bg-primary text-primary-foreground' : 'bg-white text-gray-600'}`}
+                >
+                  Table
+                </button>
+              </div>
             </div>
-          </div>
 
-          {tasksLoading ? (
-            <p className="text-sm text-gray-500">Loading tasks…</p>
-          ) : tasks.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-6 py-10 text-center">
-              <p className="text-sm font-medium text-gray-700">No tasks yet</p>
-              <p className="text-xs text-gray-500 mt-1 mb-4">
-                Add the first task to start tracking progress.
-              </p>
-              <Link
-                href={`/projects/${id}/tasks/new`}
-                className={buttonVariants({
-                  className: 'bg-primary text-primary-foreground',
-                })}
-              >
-                Create first task
-              </Link>
-            </div>
-          ) : viewMode === 'kanban' ? (
-            <KanbanBoard
-              tasks={tasks}
-              updatingId={updatingTaskId}
-              onStatusChange={(taskId, status) =>
-                statusMutation.mutate({ taskId, status })
-              }
-            />
-          ) : (
-            <div className="overflow-x-auto rounded-lg border border-gray-200">
-              <table className="min-w-full divide-y divide-gray-200 text-sm">
-                <thead className="bg-gray-50">
-                  {taskTable.getHeaderGroups().map((hg) => (
-                    <tr key={hg.id}>
-                      {hg.headers.map((header) => (
-                        <th
-                          key={header.id}
-                          className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase"
-                        >
-                          {header.isPlaceholder
-                            ? null
-                            : flexRender(header.column.columnDef.header, header.getContext())}
-                        </th>
-                      ))}
-                    </tr>
-                  ))}
-                </thead>
-                <tbody className="divide-y divide-gray-100 bg-white">
-                  {tasks.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
-                        No tasks yet.
-                      </td>
-                    </tr>
-                  ) : (
-                    taskTable.getRowModel().rows.map((row) => (
+            {tasksLoading ? (
+              <p className="text-sm text-gray-500">Loading tasks…</p>
+            ) : tasks.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-6 py-10 text-center">
+                <p className="text-sm font-medium text-gray-700">No tasks yet</p>
+                <p className="mb-4 mt-1 text-xs text-gray-500">
+                  Add the first task to start tracking progress.
+                </p>
+                <Link
+                  href={`/projects/${id}/tasks/new`}
+                  className={buttonVariants({
+                    className: 'bg-primary text-primary-foreground',
+                  })}
+                >
+                  Create first task
+                </Link>
+              </div>
+            ) : viewMode === 'kanban' ? (
+              <KanbanBoard
+                tasks={tasks}
+                updatingId={updatingTaskId}
+                onStatusChange={(taskId, status) =>
+                  statusMutation.mutate({ taskId, status })
+                }
+              />
+            ) : (
+              <div className="overflow-x-auto rounded-lg border border-gray-200">
+                <table className="min-w-full divide-y divide-gray-200 text-sm">
+                  <thead className="bg-gray-50">
+                    {taskTable.getHeaderGroups().map((hg) => (
+                      <tr key={hg.id}>
+                        {hg.headers.map((header) => (
+                          <th
+                            key={header.id}
+                            className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500"
+                          >
+                            {header.isPlaceholder
+                              ? null
+                              : flexRender(header.column.columnDef.header, header.getContext())}
+                          </th>
+                        ))}
+                      </tr>
+                    ))}
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 bg-white">
+                    {taskTable.getRowModel().rows.map((row) => (
                       <tr key={row.id} className="hover:bg-gray-50">
                         {row.getVisibleCells().map((cell) => (
                           <td key={cell.id} className="px-4 py-3">
@@ -422,35 +421,83 @@ export default function ProjectDetailPage() {
                           </td>
                         ))}
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
 
-        <div className="space-y-6">
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
-            <h3 className="text-sm font-semibold text-gray-800 mb-3">
-              Members ({project.members?.length ?? 0})
-            </h3>
-            <ul className="space-y-3 mb-4">
+          <section className="rounded-lg border border-gray-200 bg-white p-4">
+            <h2 className="text-sm font-semibold text-gray-800">Project details</h2>
+            <p className="mt-2 whitespace-pre-wrap text-sm text-gray-600">{project.description}</p>
+            <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3">
+              <div>
+                <dt className="text-xs uppercase tracking-wider text-gray-400">Status</dt>
+                <dd className="mt-1">
+                  <ProjectStatusBadge status={displayStatus} />
+                </dd>
+              </div>
+              {project.division && (
+                <div>
+                  <dt className="text-xs uppercase tracking-wider text-gray-400">Division</dt>
+                  <dd className="mt-1 text-sm text-gray-700">{project.division.name}</dd>
+                </div>
+              )}
+              <div>
+                <dt className="text-xs uppercase tracking-wider text-gray-400">Created</dt>
+                <dd className="mt-1 text-sm text-gray-700">{formatProjectDate(project.createdAt)}</dd>
+              </div>
+              {project.dueDate && (
+                <div>
+                  <dt className="text-xs uppercase tracking-wider text-gray-400">Due</dt>
+                  <dd className="mt-1 text-sm text-gray-700">{formatProjectDate(project.dueDate)}</dd>
+                </div>
+              )}
+              <div>
+                <dt className="text-xs uppercase tracking-wider text-gray-400">Progress</dt>
+                <dd className="mt-1 text-sm text-gray-700">
+                  {progress?.percent ?? 0}% · {progress?.done ?? 0}/{progress?.total ?? 0} done
+                </dd>
+              </div>
+            </dl>
+          </section>
+
+          <section className="rounded-lg border border-gray-200 bg-white p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 className="text-sm font-semibold text-gray-800">
+                Team ({project.members?.length ?? 0})
+              </h2>
+              {canManage && (
+                <button
+                  type="button"
+                  onClick={() => setAddMemberOpen(true)}
+                  className={buttonVariants({
+                    variant: 'outline',
+                    size: 'sm',
+                    className: 'text-gray-700',
+                  })}
+                >
+                  + Add Member
+                </button>
+              )}
+            </div>
+            <ul className="divide-y divide-gray-100">
               {(project.members ?? []).map((member: ProjectMember) => (
-                <li key={member.id} className="flex items-center gap-2">
+                <li key={member.id} className="flex items-center gap-2 py-2">
                   <Avatar
                     image={member.user.image}
                     name={member.user.name ?? member.user.email}
                     size={28}
                   />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">
                       {member.user.name ?? member.user.email}
                     </p>
                     <p className="text-xs text-gray-400">{member.role}</p>
                   </div>
                   {canManage && member.user.id !== user?.id && (
-                    <div className="flex items-center gap-1">
+                    <div className="flex shrink-0 items-center gap-1">
                       <select
                         value={member.role}
                         onChange={(e) =>
@@ -459,7 +506,7 @@ export default function ProjectDetailPage() {
                             role: e.target.value as 'OWNER' | 'MEMBER',
                           })
                         }
-                        className="text-xs border border-gray-300 rounded px-1 py-0.5"
+                        className="rounded border border-gray-300 px-1 py-0.5 text-xs"
                       >
                         <option value="MEMBER">Member</option>
                         <option value="OWNER">Owner</option>
@@ -476,21 +523,37 @@ export default function ProjectDetailPage() {
                 </li>
               ))}
             </ul>
-            <MemberInvite
-              projectId={id}
-              canManage={canManage}
-              onMemberAdded={() =>
-                queryClient.invalidateQueries({ queryKey: ['project', id] })
-              }
-            />
-          </div>
+            {canManage && (
+              <Dialog open={addMemberOpen} onOpenChange={setAddMemberOpen}>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Add member</DialogTitle>
+                    <DialogDescription>
+                      Enter the email of an existing registered user.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <MemberInvite
+                    projectId={id}
+                    canManage={canManage}
+                    showHeading={false}
+                    onMemberAdded={() => {
+                      queryClient.invalidateQueries({ queryKey: ['project', id] });
+                      setAddMemberOpen(false);
+                    }}
+                  />
+                </DialogContent>
+              </Dialog>
+            )}
+          </section>
+        </div>
 
-          {(project.activityLogs?.length ?? 0) > 0 && (
-            <div className="bg-white rounded-lg border border-gray-200 p-4">
+        {(project.activityLogs?.length ?? 0) > 0 && (
+          <aside className="min-w-0">
+            <div className="rounded-lg border border-gray-200 bg-white p-4 lg:sticky lg:top-0">
               <ActivityTimeline activityLogs={project.activityLogs ?? []} />
             </div>
-          )}
-        </div>
+          </aside>
+        )}
       </div>
     </div>
   );

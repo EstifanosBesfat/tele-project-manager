@@ -2,7 +2,47 @@
 
 Full-stack **project management** system for Ethio Telecom — NestJS API, Next.js UI, Prisma, and Neon/PostgreSQL.
 
-Projects contain tasks. When **every task is `DONE`**, the project is **auto-completed** by the API.
+Projects contain tasks. When **every task is `DONE`**, the project is **auto-completed** by the API (not a UI-only trick).
+
+---
+
+## Live showcase
+
+| | Link |
+|---|------|
+| **Live app** | [https://teleprojectmanager-three.vercel.app](https://teleprojectmanager-three.vercel.app) |
+| **Source code** | [github.com/EstifanosBesfat/issue_tracker](https://github.com/EstifanosBesfat/issue_tracker) |
+| **Instructor walkthrough** | [`docs/DEMO.md`](docs/DEMO.md) (~5 minutes) |
+
+### Demo login (seeded accounts)
+
+| Email | Password | Role |
+|-------|----------|------|
+| `admin@ethiotelecom.et` | `password123` | ADMIN — dashboard, users, divisions |
+| `staff1@ethiotelecom.et` | `password123` | USER — project owner |
+| `staff2@ethiotelecom.et` | `password123` | USER — project member |
+
+> Open the live link above, sign in with the admin account, and follow [`docs/DEMO.md`](docs/DEMO.md) to walk through the product with an instructor.
+
+---
+
+## What this project demonstrates
+
+- **Monorepo architecture** — separate frontend (`apps/web`) and backend (`apps/api`) with a shared Prisma package
+- **Role-based access** — global `USER` / `ADMIN`, plus per-project `OWNER` / `MEMBER`
+- **Real business rule** — completing the last task auto-completes the project; reopening a task reopens the project
+- **Modern stack** — JWT auth, Swagger docs, Kanban board, SSE notifications, Cloudinary uploads, password reset email
+
+### Quick instructor checklist (live app)
+
+1. Sign in as **admin** → Dashboard charts  
+2. **Projects** → progress rings and Active / Completed badges  
+3. Open an ACTIVE project → Kanban → mark remaining tasks **DONE**  
+4. Watch the project flip to **COMPLETED** automatically  
+5. Invite a member / show OWNER vs MEMBER  
+6. Optional: Admin → users & divisions  
+
+---
 
 ## Monorepo layout
 
@@ -51,8 +91,6 @@ npm run db:deploy
 npm run db:seed
 ```
 
-Instructor walkthrough: [`docs/DEMO.md`](docs/DEMO.md)
-
 ### 3. Run API + Web
 
 ```bash
@@ -75,14 +113,6 @@ npm run dev:web
 - Web: http://localhost:3000  
 - API: http://localhost:4000/api  
 - Swagger: http://localhost:4000/api/docs  
-
-### Demo accounts
-
-| Email | Password | Role |
-|-------|----------|------|
-| `admin@ethiotelecom.et` | `password123` | ADMIN |
-| `staff1@ethiotelecom.et` | `password123` | USER (project owner) |
-| `staff2@ethiotelecom.et` | `password123` | USER (member) |
 
 ## Core product rules
 
@@ -119,15 +149,38 @@ npm run dev:api   # Nest on http://localhost:4000/api
 npm run dev:web   # Next on http://localhost:3000
 ```
 
+Required env: `DATABASE_URL`, `JWT_SECRET`, `FRONTEND_URL`, `APP_URL`
+
+### Frontend (`apps/web`) — Vercel
+
+In the Vercel project **Settings → General → Root Directory**, set:
+
+**`apps/web`**
+
+Leave Framework as Next.js. The repo includes `apps/web/vercel.json` which installs from the monorepo root and builds `@ethio/database` + `@ethio/web`.
+
+Required env on Vercel: `NEXT_PUBLIC_API_URL` (e.g. `https://your-api.example.com/api`)
+
 ## Instructor demo checklist
 
-1. Sign in as admin → open Dashboard charts  
-2. Open **Projects** → show progress rings  
-3. Open an ACTIVE project → Kanban → drag/mark remaining tasks `DONE`  
-4. Watch project badge flip to **COMPLETED** automatically  
-5. Invite a member / show OWNER vs MEMBER  
-6. Open Swagger at `/api/docs` and authorize with JWT  
-7. Show Admin divisions + users  
+1. Sign in as admin → open Dashboard charts
+2. Open **Projects** → show progress rings
+3. Open an ACTIVE project → Kanban → mark remaining tasks `DONE`
+4. Watch project badge flip to **COMPLETED** automatically
+5. Invite a member / show OWNER vs MEMBER
+6. Open Swagger at `/api/docs` and authorize with JWT
+7. Show Admin divisions + users
+
+Or Docker:
+
+```bash
+docker build -f apps/web/Dockerfile \
+  --build-arg NEXT_PUBLIC_API_URL=https://your-api.example.com/api \
+  -t ethio-pm-web .
+docker run -p 3000:3000 ethio-pm-web
+```
+
+Or use `docker compose up --build` for local Postgres + api + web.
 
 ## Scripts
 

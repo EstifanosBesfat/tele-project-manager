@@ -62,7 +62,8 @@ export default function TaskDetailPage() {
             href={`/projects/${task.project.id}`}
             onClick={(e) => {
               e.preventDefault();
-              window.location.assign(`/projects/${task.project.id}`);
+              const projectId = task.project?.id;
+              if (projectId) window.location.assign(`/projects/${projectId}`);
             }}
             className="text-sm text-secondary hover:underline"
           >
@@ -156,6 +157,7 @@ export default function TaskDetailPage() {
 
       <CommentSection
         taskId={id}
+        projectId={task.project?.id ?? task.projectId}
         initialComments={task.comments ?? []}
         currentUserId={user?.id}
         userRole={user?.role}

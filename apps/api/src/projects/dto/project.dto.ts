@@ -4,10 +4,11 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
-  IsUUID,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import { ProjectStatus } from '@ethio/database';
+import { IsCuid } from '../../common/utils/cuid.util';
 
 export class CreateProjectDto {
   @ApiProperty()
@@ -22,7 +23,7 @@ export class CreateProjectDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUUID()
+  @IsCuid()
   divisionId?: string;
 
   @ApiPropertyOptional()
@@ -50,11 +51,33 @@ export class UpdateProjectDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUUID()
+  @IsCuid()
   divisionId?: string | null;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsDateString()
   dueDate?: string | null;
+}
+
+export class ListProjectsQueryDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  q?: string;
+
+  @ApiPropertyOptional({ enum: ProjectStatus })
+  @IsOptional()
+  @IsEnum(ProjectStatus)
+  status?: ProjectStatus;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Type(() => Number)
+  page?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Type(() => Number)
+  limit?: number;
 }

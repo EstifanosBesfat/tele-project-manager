@@ -3,16 +3,16 @@ import bcrypt from 'bcryptjs';
 import { PrismaClient, ProjectStatus, TaskStatus } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
+import { resolvePoolSsl } from '../src/pool-ssl';
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
   throw new Error('DATABASE_URL is not set');
 }
-const isNeon =
-  databaseUrl.includes('neon.tech') || databaseUrl.includes('sslmode=require');
+const ssl = resolvePoolSsl(databaseUrl);
 const pool = new Pool({
   connectionString: databaseUrl,
-  ...(isNeon ? { ssl: { rejectUnauthorized: false } } : {}),
+  ...(ssl ? { ssl } : {}),
 });
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });

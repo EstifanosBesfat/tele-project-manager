@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -6,8 +7,13 @@ import {
 import { Prisma, ProjectRole, Role } from '@ethio/database';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthUser } from '../common/types/auth-user.type';
+import { NotificationsService } from '../notifications/notifications.service';
 import { InviteMemberDto, UpdateMemberDto } from './dto/member.dto';
-import { CreateProjectDto, UpdateProjectDto } from './dto/project.dto';
+import {
+  CreateProjectDto,
+  ListProjectsQueryDto,
+  UpdateProjectDto,
+} from './dto/project.dto';
 import { ProjectCompletionService } from './project-completion.service';
 
 const projectListInclude = {
@@ -40,21 +46,41 @@ export class ProjectsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly projectCompletion: ProjectCompletionService,
+    private readonly notifications: NotificationsService,
   ) {}
 
-  async findAll(user: AuthUser) {
-    const where: Prisma.ProjectWhereInput =
-      user.role === Role.ADMIN
-        ? {}
-        : {
-            members: { some: { userId: user.id } },
-          };
+  async findAll(user: AuthUser, filters: ListProjectsQueryDto = {}) {
+    const page = Math.max(1, filters.page ?? 1);
+    const limit = Math.min(100, Math.max(1, filters.limit ?? 20));
+    const skip = (page - 1) * limit;
+    const q = filters.q?.trim();
 
-    return this.prisma.project.findMany({
-      where,
-      include: projectListInclude,
-      orderBy: { updatedAt: 'desc' },
-    });
+    const where: Prisma.ProjectWhereInput = {
+      ...(user.role === Role.ADMIN
+        ? {}
+        : { members: { some: { userId: user.id } } }),
+      ...(filters.status ? { status: filters.status } : {}),
+      ...(q ? { name: { contains: q, mode: 'insensitive' } } : {}),
+    };
+
+    const [items, total] = await Promise.all([
+      this.prisma.project.findMany({
+        where,
+        include: projectListInclude,
+        orderBy: { updatedAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.project.count({ where }),
+    ]);
+
+    return {
+      items,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
   }
 
   async findOne(id: string, user: AuthUser) {
@@ -144,7 +170,7 @@ export class ProjectsService {
     await this.ensureCanManage(projectId, user);
 
     if (!dto.userId && !dto.email) {
-      throw new ForbiddenException('userId or email is required');
+      throw new BadRequestException('userId or email is required');
     }
 
     const memberUser = dto.userId
@@ -173,7 +199,7 @@ export class ProjectsService {
       });
     }
 
-    return this.prisma.projectMember.create({
+    const membership = await this.prisma.projectMember.create({
       data: {
         projectId,
         userId: memberUser.id,
@@ -183,6 +209,21 @@ export class ProjectsService {
         user: { select: { id: true, name: true, email: true, image: true } },
       },
     });
+
+    if (memberUser.id !== user.id) {
+      const project = await this.prisma.project.findUnique({
+        where: { id: projectId },
+        select: { name: true },
+      });
+      await this.notifications.notify({
+        userId: memberUser.id,
+        projectId,
+        type: 'PROJECT_INVITED',
+        message: `${user.name ?? user.email} added you to "${project?.name ?? 'a project'}"`,
+      });
+    }
+
+    return membership;
   }
 
   async updateMember(

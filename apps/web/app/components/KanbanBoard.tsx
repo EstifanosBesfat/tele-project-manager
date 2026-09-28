@@ -20,13 +20,14 @@ interface Props {
 
 export default function KanbanBoard({ tasks, onStatusChange, updatingId }: Props) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div className="overflow-x-auto pb-2">
+      <div className="flex min-w-full gap-4">
       {COLUMNS.map((col) => {
         const columnTasks = tasks.filter((t) => t.status === col.status);
         return (
           <div
             key={col.status}
-            className="rounded-lg border border-gray-200 bg-gray-50/50 p-3 min-h-[200px]"
+            className="min-h-[200px] min-w-72 flex-1 rounded-lg border border-gray-200 bg-gray-50/50 p-3"
           >
             <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">
               {col.label}
@@ -80,6 +81,7 @@ export default function KanbanBoard({ tasks, onStatusChange, updatingId }: Props
           </div>
         );
       })}
+      </div>
     </div>
   );
 }

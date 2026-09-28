@@ -1,9 +1,27 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { type ColumnDef } from '@tanstack/react-table';
+import { MoreHorizontal } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { Division } from '@/app/types/project';
+import { Badge } from '@/components/ui/badge';
+import { Button, buttonVariants } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Input } from '@/components/ui/input';
+import { DataTable } from '@/components/data-table/data-table';
+import { DataTableColumnHeader } from '@/components/data-table/data-table-column-header';
+import { cn } from '@/lib/utils';
 
 export default function DivisionTable() {
   const [loading, setLoading] = useState<string | null>(null);
@@ -13,7 +31,7 @@ export default function DivisionTable() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
 
-  const { data: divisions = [], refetch } = useQuery({
+  const { data: divisions = [], refetch, isLoading } = useQuery({
     queryKey: ['divisions'],
     queryFn: async () => {
       const { data } = await api.get<Division[]>('/divisions');
@@ -61,10 +79,135 @@ export default function DivisionTable() {
     setEditingName('');
   };
 
+  const columns = useMemo<ColumnDef<Division>[]>(
+    () => [
+      {
+        id: 'select',
+        header: ({ table }) => (
+          <Checkbox
+            checked={table.getIsAllPageRowsSelected()}
+            indeterminate={
+              table.getIsSomePageRowsSelected() &&
+              !table.getIsAllPageRowsSelected()
+            }
+            onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+            aria-label="Select all"
+          />
+        ),
+        cell: ({ row }) => (
+          <Checkbox
+            checked={row.getIsSelected()}
+            onCheckedChange={(value) => row.toggleSelected(!!value)}
+            aria-label="Select row"
+          />
+        ),
+        enableSorting: false,
+        enableHiding: false,
+      },
+      {
+        accessorKey: 'name',
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Name" />
+        ),
+        cell: ({ row }) => {
+          const division = row.original;
+          if (editingId === division.id) {
+            return (
+              <Input
+                type="text"
+                value={editingName}
+                onChange={(e) => setEditingName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') saveEdit();
+                  if (e.key === 'Escape') setEditingId(null);
+                }}
+                autoFocus
+                className="h-8 max-w-[220px]"
+              />
+            );
+          }
+          return <span className="font-medium">{division.name}</span>;
+        },
+      },
+      {
+        id: 'status',
+        accessorFn: (row) => (row.isActive ? 'Active' : 'Inactive'),
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Status" />
+        ),
+        cell: ({ row }) => (
+          <Badge variant={row.original.isActive ? 'secondary' : 'destructive'}>
+            {row.original.isActive ? 'Active' : 'Inactive'}
+          </Badge>
+        ),
+      },
+      {
+        id: 'actions',
+        enableHiding: false,
+        cell: ({ row }) => {
+          const division = row.original;
+          if (editingId === division.id) {
+            return (
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={saveEdit}
+                  disabled={loading === division.id}
+                >
+                  Save
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setEditingId(null)}
+                >
+                  Cancel
+                </Button>
+              </div>
+            );
+          }
+          return (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                className={cn(
+                  buttonVariants({ variant: 'ghost', size: 'icon-sm' }),
+                )}
+                disabled={!!loading}
+              >
+                <span className="sr-only">Open menu</span>
+                <MoreHorizontal />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                  <DropdownMenuItem onClick={() => startEdit(division)}>
+                    Rename
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    variant={division.isActive ? 'destructive' : 'default'}
+                    onClick={() =>
+                      patch(division.id, { isActive: !division.isActive })
+                    }
+                  >
+                    {division.isActive ? 'Deactivate' : 'Activate'}
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          );
+        },
+      },
+    ],
+    [editingId, editingName, loading],
+  );
+
   return (
-    <div>
-      <div className="flex flex-wrap items-center gap-2 mb-4">
-        <input
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
           type="text"
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
@@ -72,119 +215,31 @@ export default function DivisionTable() {
             if (e.key === 'Enter') createDivision();
           }}
           placeholder="New division name (e.g. Marketing)"
-          className="flex-1 min-w-[200px] rounded-md border border-gray-300 bg-gray-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+          className="min-w-[200px] flex-1"
         />
-        <button
+        <Button
+          type="button"
           onClick={createDivision}
           disabled={creating || !newName.trim()}
-          className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50 transition"
         >
           {creating ? 'Adding…' : '+ Add Division'}
-        </button>
+        </Button>
       </div>
 
       {error && (
-        <div className="mb-4 p-3 bg-danger/10 text-danger rounded-md text-sm">{error}</div>
+        <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+          {error}
+        </div>
       )}
 
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200 text-sm">
-          <thead className="bg-gray-50">
-            <tr>
-              {['Name', 'Status', 'Actions'].map((h) => (
-                <th
-                  key={h}
-                  className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider"
-                >
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100 bg-white">
-            {divisions.map((division) => (
-              <tr key={division.id} className={!division.isActive ? 'opacity-50' : ''}>
-                <td className="px-4 py-3 font-medium text-gray-900">
-                  {editingId === division.id ? (
-                    <input
-                      type="text"
-                      value={editingName}
-                      onChange={(e) => setEditingName(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') saveEdit();
-                        if (e.key === 'Escape') setEditingId(null);
-                      }}
-                      autoFocus
-                      className="rounded border border-gray-300 px-2 py-1 text-sm focus:ring-1 focus:ring-primary"
-                    />
-                  ) : (
-                    division.name
-                  )}
-                </td>
-                <td className="px-4 py-3">
-                  <span
-                    className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
-                      division.isActive
-                        ? 'bg-success/15 text-success'
-                        : 'bg-danger/15 text-danger'
-                    }`}
-                  >
-                    {division.isActive ? 'Active' : 'Inactive'}
-                  </span>
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    {editingId === division.id ? (
-                      <>
-                        <button
-                          onClick={saveEdit}
-                          disabled={loading === division.id}
-                          className="text-xs px-3 py-1 rounded font-semibold bg-primary/10 text-primary hover:bg-primary/20 disabled:opacity-50 transition"
-                        >
-                          Save
-                        </button>
-                        <button
-                          onClick={() => setEditingId(null)}
-                          className="text-xs px-3 py-1 rounded font-semibold text-gray-500 hover:bg-gray-100 transition"
-                        >
-                          Cancel
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <button
-                          onClick={() => startEdit(division)}
-                          disabled={!!loading}
-                          className="text-xs px-3 py-1 rounded font-semibold text-gray-500 hover:bg-gray-100 disabled:opacity-50 transition"
-                        >
-                          Rename
-                        </button>
-                        <button
-                          onClick={() =>
-                            patch(division.id, { isActive: !division.isActive })
-                          }
-                          disabled={!!loading}
-                          className={`text-xs px-3 py-1 rounded font-semibold transition ${
-                            division.isActive
-                              ? 'bg-danger/10 text-danger hover:bg-danger/20'
-                              : 'bg-success/10 text-success hover:bg-success/20'
-                          } disabled:opacity-50`}
-                        >
-                          {loading === division.id
-                            ? '...'
-                            : division.isActive
-                              ? 'Deactivate'
-                              : 'Activate'}
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        columns={columns}
+        data={divisions}
+        filterColumn="name"
+        filterPlaceholder="Filter divisions..."
+        isLoading={isLoading}
+        emptyMessage="No divisions found."
+      />
     </div>
   );
 }

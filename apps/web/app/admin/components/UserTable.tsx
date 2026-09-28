@@ -1,8 +1,26 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { type ColumnDef } from '@tanstack/react-table';
+import { MoreHorizontal } from 'lucide-react';
 import { api } from '@/lib/api';
+import { Badge } from '@/components/ui/badge';
+import { buttonVariants } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Select } from '@/components/ui/select';
+import { DataTable } from '@/components/data-table/data-table';
+import { DataTableColumnHeader } from '@/components/data-table/data-table-column-header';
+import { cn } from '@/lib/utils';
 
 interface User {
   id: string;
@@ -20,7 +38,7 @@ interface Props {
 export default function UserTable({ currentUserId }: Props) {
   const [loading, setLoading] = useState<string | null>(null);
 
-  const { data: users = [], refetch } = useQuery({
+  const { data: users = [], refetch, isLoading } = useQuery({
     queryKey: ['admin-users'],
     queryFn: async () => {
       const { data } = await api.get<User[]>('/users');
@@ -38,74 +56,138 @@ export default function UserTable({ currentUserId }: Props) {
     }
   };
 
-  return (
-    <div className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-gray-200 text-sm">
-        <thead className="bg-gray-50">
-          <tr>
-            {['Name', 'Email', 'Role', 'Status', 'Actions'].map((h) => (
-              <th
-                key={h}
-                className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider"
-              >
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-100 bg-white">
-          {users.map((user) => (
-            <tr key={user.id} className={user.isActive === false ? 'opacity-50' : ''}>
-              <td className="px-4 py-3 font-medium text-gray-900">{user.name ?? '—'}</td>
-              <td className="px-4 py-3 text-gray-500">{user.email}</td>
-              <td className="px-4 py-3">
-                <select
-                  value={user.role}
-                  disabled={user.id === currentUserId || !!loading}
-                  onChange={(e) => patch(user.id, { role: e.target.value })}
-                  className="text-xs rounded border border-gray-300 px-2 py-1 focus:ring-1 focus:ring-primary disabled:opacity-50"
-                >
-                  <option value="USER">USER</option>
-                  <option value="ADMIN">ADMIN</option>
-                </select>
-              </td>
-              <td className="px-4 py-3">
-                <span
-                  className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
-                    user.isActive !== false
-                      ? 'bg-success/15 text-success'
-                      : 'bg-danger/15 text-danger'
-                  }`}
-                >
-                  {user.isActive !== false ? 'Active' : 'Inactive'}
-                </span>
-              </td>
-              <td className="px-4 py-3">
-                {user.id !== currentUserId && (
-                  <button
-                    onClick={() => patch(user.id, { isActive: user.isActive === false })}
-                    disabled={!!loading}
-                    className={`text-xs px-3 py-1 rounded font-semibold transition ${
-                      user.isActive !== false
-                        ? 'bg-danger/10 text-danger hover:bg-danger/20'
-                        : 'bg-success/10 text-success hover:bg-success/20'
-                    } disabled:opacity-50`}
-                  >
-                    {loading === user.id
-                      ? '...'
-                      : user.isActive !== false
-                        ? 'Deactivate'
-                        : 'Activate'}
-                  </button>
+  const columns = useMemo<ColumnDef<User>[]>(
+    () => [
+      {
+        id: 'select',
+        header: ({ table }) => (
+          <Checkbox
+            checked={table.getIsAllPageRowsSelected()}
+            indeterminate={
+              table.getIsSomePageRowsSelected() &&
+              !table.getIsAllPageRowsSelected()
+            }
+            onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+            aria-label="Select all"
+          />
+        ),
+        cell: ({ row }) => (
+          <Checkbox
+            checked={row.getIsSelected()}
+            onCheckedChange={(value) => row.toggleSelected(!!value)}
+            aria-label="Select row"
+          />
+        ),
+        enableSorting: false,
+        enableHiding: false,
+      },
+      {
+        accessorKey: 'name',
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Name" />
+        ),
+        cell: ({ row }) => (
+          <span className="font-medium">{row.original.name ?? '—'}</span>
+        ),
+      },
+      {
+        accessorKey: 'email',
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Email" />
+        ),
+        cell: ({ row }) => (
+          <span className="text-muted-foreground">{row.original.email}</span>
+        ),
+      },
+      {
+        accessorKey: 'role',
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Role" />
+        ),
+        cell: ({ row }) => {
+          const user = row.original;
+          return (
+            <Select
+              value={user.role}
+              disabled={user.id === currentUserId || loading === user.id}
+              onChange={(e) => patch(user.id, { role: e.target.value })}
+              className="h-8 w-[110px] text-xs"
+            >
+              <option value="USER">USER</option>
+              <option value="ADMIN">ADMIN</option>
+            </Select>
+          );
+        },
+      },
+      {
+        id: 'status',
+        accessorFn: (row) => (row.isActive === false ? 'Inactive' : 'Active'),
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Status" />
+        ),
+        cell: ({ row }) => {
+          const active = row.original.isActive !== false;
+          return (
+            <Badge variant={active ? 'secondary' : 'destructive'}>
+              {active ? 'Active' : 'Inactive'}
+            </Badge>
+          );
+        },
+      },
+      {
+        id: 'actions',
+        enableHiding: false,
+        cell: ({ row }) => {
+          const user = row.original;
+          const active = user.isActive !== false;
+          return (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                className={cn(
+                  buttonVariants({ variant: 'ghost', size: 'icon-sm' }),
                 )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {users.length === 0 && (
-        <p className="text-sm text-gray-500 py-4 text-center">No users found.</p>
-      )}
-    </div>
+                disabled={loading === user.id}
+              >
+                <span className="sr-only">Open menu</span>
+                <MoreHorizontal />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                  <DropdownMenuItem
+                    onClick={() => navigator.clipboard.writeText(user.email)}
+                  >
+                    Copy email
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  {user.id !== currentUserId && (
+                    <DropdownMenuItem
+                      variant={active ? 'destructive' : 'default'}
+                      onClick={() =>
+                        patch(user.id, { isActive: user.isActive === false })
+                      }
+                    >
+                      {active ? 'Deactivate' : 'Activate'}
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          );
+        },
+      },
+    ],
+    [currentUserId, loading],
+  );
+
+  return (
+    <DataTable
+      columns={columns}
+      data={users}
+      filterColumn="email"
+      filterPlaceholder="Filter emails..."
+      isLoading={isLoading}
+      emptyMessage="No users found."
+    />
   );
 }

@@ -44,6 +44,14 @@ export interface ProjectProgress {
   status: ProjectStatus;
 }
 
+export interface ProjectListResponse {
+  items: Project[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
 export interface Division {
   id: string;
   name: string;

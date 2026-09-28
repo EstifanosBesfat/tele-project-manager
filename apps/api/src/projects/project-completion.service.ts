@@ -1,20 +1,36 @@
 import { Injectable } from '@nestjs/common';
-import { ProjectStatus, TaskStatus } from '@ethio/database';
+import { Prisma, ProjectStatus, TaskStatus } from '@ethio/database';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
+
+type CompletionDb = {
+  task: Pick<Prisma.TransactionClient['task'], 'findMany'>;
+  project: Pick<Prisma.TransactionClient['project'], 'findUnique' | 'update'>;
+  activityLog: Pick<Prisma.TransactionClient['activityLog'], 'create'>;
+  projectMember: Pick<Prisma.TransactionClient['projectMember'], 'findMany'>;
+  notification: Pick<Prisma.TransactionClient['notification'], 'create'>;
+};
 
 @Injectable()
 export class ProjectCompletionService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
-  async syncProjectCompletion(projectId: string, actorId: string) {
+  async syncProjectCompletion(
+    projectId: string,
+    actorId: string,
+    db: CompletionDb = this.prisma,
+  ) {
     const [tasks, project] = await Promise.all([
-      this.prisma.task.findMany({
+      db.task.findMany({
         where: { projectId },
         select: { status: true },
       }),
-      this.prisma.project.findUnique({
+      db.project.findUnique({
         where: { id: projectId },
-        select: { id: true, status: true },
+        select: { id: true, status: true, name: true },
       }),
     ]);
 
@@ -25,12 +41,12 @@ export class ProjectCompletionService {
     const allDone = tasks.every((task) => task.status === TaskStatus.DONE);
 
     if (allDone && project.status !== ProjectStatus.COMPLETED) {
-      await this.prisma.project.update({
+      await db.project.update({
         where: { id: projectId },
         data: { status: ProjectStatus.COMPLETED },
       });
 
-      await this.prisma.activityLog.create({
+      await db.activityLog.create({
         data: {
           projectId,
           actorId,
@@ -40,16 +56,24 @@ export class ProjectCompletionService {
         },
       });
 
+      await this.notifyProjectMembers(
+        projectId,
+        actorId,
+        'PROJECT_AUTO_COMPLETED',
+        `Project "${project.name}" was completed`,
+        db,
+      );
+
       return { ...project, status: ProjectStatus.COMPLETED };
     }
 
     if (!allDone && project.status === ProjectStatus.COMPLETED) {
-      await this.prisma.project.update({
+      await db.project.update({
         where: { id: projectId },
         data: { status: ProjectStatus.ACTIVE },
       });
 
-      await this.prisma.activityLog.create({
+      await db.activityLog.create({
         data: {
           projectId,
           actorId,
@@ -63,6 +87,27 @@ export class ProjectCompletionService {
     }
 
     return project;
+  }
+
+  private async notifyProjectMembers(
+    projectId: string,
+    actorId: string,
+    type: string,
+    message: string,
+    db: CompletionDb,
+  ) {
+    const members = await db.projectMember.findMany({
+      where: { projectId },
+      select: { userId: true },
+    });
+
+    for (const member of members) {
+      if (member.userId === actorId) continue;
+      await this.notifications.notify(
+        { userId: member.userId, projectId, type, message },
+        db,
+      );
+    }
   }
 
   async getProjectProgress(projectId: string) {
@@ -80,12 +125,22 @@ export class ProjectCompletionService {
     const total = tasks.length;
     const done = tasks.filter((task) => task.status === TaskStatus.DONE).length;
     const percent = total === 0 ? 0 : Math.round((done / total) * 100);
+    const allDone = total > 0 && done === total;
+
+    let status = project?.status ?? ProjectStatus.ACTIVE;
+    if (project && total > 0 && !allDone && status === ProjectStatus.COMPLETED) {
+      await this.prisma.project.update({
+        where: { id: projectId },
+        data: { status: ProjectStatus.ACTIVE },
+      });
+      status = ProjectStatus.ACTIVE;
+    }
 
     return {
       total,
       done,
       percent,
-      status: project?.status ?? ProjectStatus.ACTIVE,
+      status,
     };
   }
 }

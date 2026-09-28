@@ -1,11 +1,11 @@
-import { IsEmail, IsEnum, IsOptional, IsUUID } from 'class-validator';
+import { IsEmail, IsEnum, IsOptional, IsString } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ProjectRole } from '@ethio/database';
 
 export class InviteMemberDto {
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUUID()
+  @IsString()
   userId?: string;
 
   @ApiPropertyOptional()

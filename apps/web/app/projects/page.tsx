@@ -1,40 +1,65 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useQuery, useQueries } from '@tanstack/react-query';
 import { goToProject } from '@/lib/navigation';
-import {
-  useReactTable,
-  getCoreRowModel,
-  getFilteredRowModel,
-  flexRender,
-  createColumnHelper,
-} from '@tanstack/react-table';
+import { type ColumnDef } from '@tanstack/react-table';
+import { MoreHorizontal } from 'lucide-react';
 import { api } from '@/lib/api';
-import type { Project, ProjectProgress } from '@/app/types/project';
+import type { Project, ProjectListResponse, ProjectProgress } from '@/app/types/project';
 import ProgressRing from '@/app/components/ProgressRing';
 import ProjectStatusBadge from '@/app/components/ProjectStatusBadge';
 import OverdueBadge from '@/app/components/OverdueBadge';
 import { getDueDateStatus } from '@/app/lib/dueDateUtils';
-import { buttonVariants } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Select } from '@/components/ui/select';
+import { DataTable } from '@/components/data-table/data-table';
+import { DataTableColumnHeader } from '@/components/data-table/data-table-column-header';
+import { cn } from '@/lib/utils';
 
 type ProjectRow = Project & { progress?: ProjectProgress };
 
-const columnHelper = createColumnHelper<ProjectRow>();
+const PAGE_SIZE = 20;
 
 export default function ProjectsPage() {
+  const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
-  const [search, setSearch] = useState('');
 
-  const { data: projects = [], isLoading } = useQuery({
-    queryKey: ['projects'],
+  const { data, isLoading } = useQuery({
+    queryKey: ['projects', page, statusFilter],
     queryFn: async () => {
-      const { data } = await api.get<Project[]>('/projects');
-      return data;
+      const { data: result } = await api.get<ProjectListResponse>('/projects', {
+        params: {
+          page,
+          limit: PAGE_SIZE,
+          ...(statusFilter !== 'ALL' ? { status: statusFilter } : {}),
+        },
+      });
+      return result;
     },
   });
+
+  const projects = data?.items ?? [];
+  const total = data?.total ?? 0;
+  const totalPages = data?.totalPages ?? 0;
+
+  useEffect(() => {
+    if (totalPages > 0 && page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
 
   const progressQueries = useQueries({
     queries: projects.map((p) => ({
@@ -54,73 +79,146 @@ export default function ProjectsPage() {
     }));
   }, [projects, progressQueries]);
 
-  const filtered = useMemo(() => {
-    return rows.filter((p) => {
-      if (statusFilter !== 'ALL' && p.status !== statusFilter) return false;
-      if (search.trim()) {
-        const q = search.trim().toLowerCase();
-        return (
-          p.name.toLowerCase().includes(q) ||
-          p.description.toLowerCase().includes(q) ||
-          p.division?.name?.toLowerCase().includes(q)
-        );
-      }
-      return true;
-    });
-  }, [rows, statusFilter, search]);
+  function changeStatus(next: string) {
+    setPage(1);
+    setStatusFilter(next);
+  }
 
-  const columns = useMemo(
+  function renderStatusSelect() {
+    return (
+      <Select
+        value={statusFilter}
+        onChange={(e) => changeStatus(e.target.value)}
+        className="w-[160px]"
+      >
+        <option value="ALL">All statuses</option>
+        <option value="ACTIVE">Active</option>
+        <option value="COMPLETED">Completed</option>
+      </Select>
+    );
+  }
+
+  const pagination =
+    totalPages > 1 ? (
+      <div className="flex items-center justify-end gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => setPage((current) => Math.max(1, current - 1))}
+          disabled={page <= 1 || isLoading}
+        >
+          Previous
+        </Button>
+        <span className="text-sm text-muted-foreground">
+          Page {page} of {totalPages}
+        </span>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => setPage((current) => current + 1)}
+          disabled={page >= totalPages || isLoading}
+        >
+          Next
+        </Button>
+      </div>
+    ) : null;
+
+  const columns = useMemo<ColumnDef<ProjectRow>[]>(
     () => [
-      columnHelper.display({
-        id: 'progress',
+      {
+        id: 'select',
+        header: ({ table }) => (
+          <Checkbox
+            checked={table.getIsAllPageRowsSelected()}
+            indeterminate={
+              table.getIsSomePageRowsSelected() &&
+              !table.getIsAllPageRowsSelected()
+            }
+            onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+            aria-label="Select all"
+          />
+        ),
+        cell: ({ row }) => (
+          <Checkbox
+            checked={row.getIsSelected()}
+            onCheckedChange={(value) => row.toggleSelected(!!value)}
+            aria-label="Select row"
+          />
+        ),
+        enableSorting: false,
+        enableHiding: false,
+      },
+      {
+        id: 'progressRing',
         header: '',
         cell: ({ row }) => (
           <ProgressRing percent={row.original.progress?.percent ?? 0} size={40} />
         ),
-      }),
-      columnHelper.accessor('name', {
-        header: 'Name',
+        enableSorting: false,
+        enableHiding: false,
+      },
+      {
+        accessorKey: 'name',
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Name" />
+        ),
         cell: ({ row }) => (
           <a
             href={`/projects/${row.original.id}`}
-            className="font-medium text-gray-900 hover:text-secondary"
+            className="font-medium text-foreground hover:text-secondary"
             onClick={(e) => e.stopPropagation()}
           >
             {row.original.name}
           </a>
         ),
-      }),
-      columnHelper.accessor('status', {
-        header: 'Status',
-        cell: ({ getValue }) => <ProjectStatusBadge status={getValue()} />,
-      }),
-      columnHelper.display({
-        id: 'percent',
-        header: 'Progress',
-        cell: ({ row }) => (
-          <span className="text-sm tabular-nums">{row.original.progress?.percent ?? 0}%</span>
+      },
+      {
+        accessorKey: 'status',
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Status" />
         ),
-      }),
-      columnHelper.display({
-        id: 'division',
-        header: 'Division',
+        cell: ({ row }) => <ProjectStatusBadge status={row.original.status} />,
+      },
+      {
+        id: 'percent',
+        accessorFn: (row) => row.progress?.percent ?? 0,
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Progress" />
+        ),
         cell: ({ row }) => (
-          <span className="text-sm text-gray-600">
+          <span className="tabular-nums text-sm">
+            {row.original.progress?.percent ?? 0}%
+          </span>
+        ),
+      },
+      {
+        id: 'division',
+        accessorFn: (row) => row.division?.name ?? '',
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Division" />
+        ),
+        cell: ({ row }) => (
+          <span className="text-sm text-muted-foreground">
             {row.original.division?.name ?? '—'}
           </span>
         ),
-      }),
-      columnHelper.accessor('dueDate', {
-        header: 'Due Date',
+      },
+      {
+        accessorKey: 'dueDate',
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Due Date" />
+        ),
         cell: ({ row }) => {
           const due = row.original.dueDate;
-          if (!due) return <span className="text-gray-400">—</span>;
+          if (!due) return <span className="text-muted-foreground">—</span>;
           const overdue =
             row.original.status !== 'COMPLETED' &&
             getDueDateStatus(due, row.original.status) === 'overdue';
           return (
             <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-600">
+              <span className="text-sm text-muted-foreground">
                 {new Date(due).toLocaleDateString('en-US', {
                   month: 'short',
                   day: 'numeric',
@@ -131,33 +229,66 @@ export default function ProjectsPage() {
             </div>
           );
         },
-      }),
-      columnHelper.display({
+      },
+      {
         id: 'members',
-        header: 'Members',
+        accessorFn: (row) => row.members?.length ?? 0,
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Members" />
+        ),
         cell: ({ row }) => (
-          <span className="text-sm text-gray-600">
+          <span className="text-sm text-muted-foreground">
             {row.original.members?.length ?? 0}
           </span>
         ),
-      }),
+      },
+      {
+        id: 'actions',
+        enableHiding: false,
+        cell: ({ row }) => {
+          const project = row.original;
+          return (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                className={cn(
+                  buttonVariants({ variant: 'ghost', size: 'icon-sm' }),
+                )}
+              >
+                <span className="sr-only">Open menu</span>
+                <MoreHorizontal />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                  <DropdownMenuItem
+                    onClick={() => navigator.clipboard.writeText(project.id)}
+                  >
+                    Copy project ID
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => goToProject(project.id)}
+                  >
+                    View project
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          );
+        },
+      },
     ],
     [],
   );
 
-  const table = useReactTable({
-    data: filtered,
-    columns,
-    getCoreRowModel: getCoreRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-  });
-
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="mx-auto flex max-w-6xl flex-col gap-6">
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Projects</h1>
-          <p className="text-sm text-gray-500 mt-1">Manage your projects and track progress.</p>
+          <h1 className="text-2xl font-bold text-foreground">Projects</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Manage your projects and track progress.
+          </p>
         </div>
         <Link
           href="/projects/new"
@@ -169,29 +300,10 @@ export default function ProjectsPage() {
         </Link>
       </div>
 
-      <div className="flex flex-wrap gap-3">
-        <input
-          type="search"
-          placeholder="Search projects..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="flex-1 min-w-[200px] rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-        />
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="rounded-md border border-gray-300 px-3 py-2 text-sm"
-        >
-          <option value="ALL">All statuses</option>
-          <option value="ACTIVE">Active</option>
-          <option value="COMPLETED">Completed</option>
-        </select>
-      </div>
-
-      {!isLoading && projects.length === 0 && (
-        <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-6 py-12 text-center">
-          <p className="text-base font-semibold text-gray-800">No projects yet</p>
-          <p className="text-sm text-gray-500 mt-1 mb-4">
+      {!isLoading && total === 0 && statusFilter === 'ALL' && (
+        <div className="rounded-lg border border-dashed border-border bg-muted/40 px-6 py-12 text-center">
+          <p className="text-base font-semibold text-foreground">No projects yet</p>
+          <p className="mb-4 mt-1 text-sm text-muted-foreground">
             Create your first project to start assigning tasks.
           </p>
           <Link
@@ -205,19 +317,20 @@ export default function ProjectsPage() {
         </div>
       )}
 
-      {/* Card grid for mobile */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 lg:hidden">
+      <div className="flex lg:hidden">{renderStatusSelect()}</div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:hidden">
         {isLoading ? (
-          <p className="text-sm text-gray-500">Loading projects…</p>
-        ) : filtered.length === 0 && projects.length > 0 ? (
-          <p className="text-sm text-gray-500 col-span-full text-center py-8">
+          <p className="text-sm text-muted-foreground">Loading projects…</p>
+        ) : total === 0 && statusFilter !== 'ALL' ? (
+          <p className="col-span-full py-8 text-center text-sm text-muted-foreground">
             No projects match your filters.
           </p>
         ) : (
-          filtered.map((p) => (
+          rows.map((p) => (
             <Card
               key={p.id}
-              className="shadow-sm cursor-pointer transition hover:border-primary/40 hover:shadow-md"
+              className="cursor-pointer shadow-sm transition hover:border-primary/40 hover:shadow-md"
               role="link"
               tabIndex={0}
               onClick={() => goToProject(p.id)}
@@ -231,15 +344,17 @@ export default function ProjectsPage() {
               <CardContent className="p-4">
                 <div className="flex items-start gap-3">
                   <ProgressRing percent={p.progress?.percent ?? 0} size={44} />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-gray-900 truncate">{p.name}</p>
-                    <div className="flex flex-wrap gap-2 mt-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-semibold text-foreground">{p.name}</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
                       <ProjectStatusBadge status={p.status} />
                       {p.division && (
-                        <span className="text-xs text-gray-500">{p.division.name}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {p.division.name}
+                        </span>
                       )}
                     </div>
-                    <p className="text-xs text-gray-400 mt-1">
+                    <p className="mt-1 text-xs text-muted-foreground">
                       {p.members?.length ?? 0} members · {p.progress?.percent ?? 0}%
                     </p>
                   </div>
@@ -250,56 +365,23 @@ export default function ProjectsPage() {
         )}
       </div>
 
-      {/* Table for desktop */}
-      <div className="hidden lg:block overflow-x-auto rounded-lg border border-gray-200 bg-white">
-        <table className="min-w-full divide-y divide-gray-200 text-sm">
-          <thead className="bg-gray-50">
-            {table.getHeaderGroups().map((hg) => (
-              <tr key={hg.id}>
-                {hg.headers.map((header) => (
-                  <th
-                    key={header.id}
-                    className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider"
-                  >
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(header.column.columnDef.header, header.getContext())}
-                  </th>
-                ))}
-              </tr>
-            ))}
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {isLoading ? (
-              <tr>
-                <td colSpan={columns.length} className="px-4 py-8 text-center text-gray-500">
-                  Loading projects…
-                </td>
-              </tr>
-            ) : filtered.length === 0 ? (
-              <tr>
-                <td colSpan={columns.length} className="px-4 py-8 text-center text-gray-500">
-                  No projects found.
-                </td>
-              </tr>
-            ) : (
-              table.getRowModel().rows.map((row) => (
-                <tr
-                  key={row.id}
-                  className="hover:bg-gray-50 cursor-pointer"
-                  onClick={() => goToProject(row.original.id)}
-                >
-                  {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id} className="px-4 py-3">
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </td>
-                  ))}
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+      <div className="hidden lg:block">
+        {(total > 0 || isLoading || statusFilter !== 'ALL') && (
+          <DataTable
+            columns={columns}
+            data={rows}
+            filterColumn="name"
+            filterPlaceholder="Filter projects..."
+            isLoading={isLoading}
+            emptyMessage="No projects found."
+            pageSize={PAGE_SIZE}
+            showPagination={false}
+            toolbar={renderStatusSelect()}
+          />
+        )}
       </div>
+
+      {pagination}
     </div>
   );
 }

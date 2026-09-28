@@ -2,6 +2,7 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter';
 
 function getCorsOrigins(): string | string[] {
   const defaults = [
@@ -38,6 +39,8 @@ export async function configureApp(app: INestApplication): Promise<void> {
     credentials: true,
     allowedHeaders: 'Content-Type, Accept, Authorization',
   });
+
+  app.useGlobalFilters(new PrismaExceptionFilter());
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('EthioTelecom Project Manager API')

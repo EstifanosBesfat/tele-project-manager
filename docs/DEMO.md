@@ -1,6 +1,16 @@
 # Instructor demo script (≈ 5 minutes)
 
-## Before you start
+## Live showcase (preferred)
+
+Open the deployed app — no local setup required:
+
+**App:** [https://teleprojectmanager-three.vercel.app](https://teleprojectmanager-three.vercel.app)
+
+Login: **admin@ethiotelecom.et** / **password123**
+
+---
+
+## Local alternative
 
 ```bash
 npm run dev:api   # http://localhost:4000

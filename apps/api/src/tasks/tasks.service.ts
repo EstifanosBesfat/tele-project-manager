@@ -6,9 +6,12 @@ import {
 import { Prisma, ProjectRole, Role, TaskStatus } from '@ethio/database';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthUser } from '../common/types/auth-user.type';
+import { NotificationsService } from '../notifications/notifications.service';
 import { ProjectCompletionService } from '../projects/project-completion.service';
 import { ProjectsService } from '../projects/projects.service';
 import { CreateTaskDto, TaskFiltersDto, UpdateTaskDto } from './dto/task.dto';
+
+const CSV_EXPORT_MAX = 5000;
 
 const taskListInclude = {
   reporter: { select: { id: true, name: true, email: true, image: true } },
@@ -42,6 +45,7 @@ export class TasksService {
     private readonly prisma: PrismaService,
     private readonly projectsService: ProjectsService,
     private readonly projectCompletion: ProjectCompletionService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async findByProject(projectId: string, filters: TaskFiltersDto, user: AuthUser) {
@@ -51,20 +55,7 @@ export class TasksService {
     const limit = Math.min(100, Math.max(1, filters.limit ?? 20));
     const skip = (page - 1) * limit;
 
-    const where: Prisma.TaskWhereInput = { projectId };
-
-    if (filters.q?.trim()) {
-      const q = filters.q.trim();
-      where.OR = [
-        { title: { contains: q, mode: 'insensitive' } },
-        { description: { contains: q, mode: 'insensitive' } },
-      ];
-    }
-
-    if (filters.status) where.status = filters.status;
-    if (filters.priority) where.priority = filters.priority;
-    if (filters.category) where.category = filters.category;
-    if (filters.assigneeId) where.assigneeId = filters.assigneeId;
+    const where = this.buildTaskWhere(projectId, filters);
 
     const [items, total] = await Promise.all([
       this.prisma.task.findMany({
@@ -117,9 +108,9 @@ export class TasksService {
       },
     });
 
-    if (dto.status === TaskStatus.DONE || task.status === TaskStatus.DONE) {
-      await this.projectCompletion.syncProjectCompletion(projectId, user.id);
-    }
+    await this.projectCompletion.syncProjectCompletion(projectId, user.id);
+
+    await this.notifyAssigneeIfChanged(user, projectId, task, null);
 
     return task;
   }
@@ -141,7 +132,7 @@ export class TasksService {
   async update(taskId: string, dto: UpdateTaskDto, user: AuthUser) {
     const existing = await this.prisma.task.findUnique({
       where: { id: taskId },
-      select: { id: true, projectId: true, status: true },
+      select: { id: true, projectId: true, status: true, assigneeId: true },
     });
 
     if (!existing) {
@@ -197,13 +188,20 @@ export class TasksService {
       );
     }
 
+    await this.notifyAssigneeIfChanged(
+      user,
+      existing.projectId,
+      task,
+      existing.assigneeId,
+    );
+
     return task;
   }
 
   async remove(taskId: string, user: AuthUser) {
     const existing = await this.prisma.task.findUnique({
       where: { id: taskId },
-      select: { id: true, projectId: true },
+      select: { id: true, projectId: true, title: true },
     });
 
     if (!existing) {
@@ -212,31 +210,48 @@ export class TasksService {
 
     await this.ensureCanDeleteTask(existing.projectId, user);
 
-    await this.prisma.task.delete({ where: { id: taskId } });
+    // Do not set taskId: the Task row is gone, and a pre-delete log would
+    // cascade-delete with it. Title is kept on newValue for the timeline.
+    await this.prisma.$transaction(async (tx) => {
+      await tx.task.delete({ where: { id: taskId } });
 
-    await this.prisma.activityLog.create({
-      data: {
-        projectId: existing.projectId,
-        taskId,
-        actorId: user.id,
-        action: 'TASK_DELETED',
-      },
+      await tx.activityLog.create({
+        data: {
+          projectId: existing.projectId,
+          actorId: user.id,
+          action: 'TASK_DELETED',
+          newValue: existing.title,
+        },
+      });
+
+      await this.projectCompletion.syncProjectCompletion(
+        existing.projectId,
+        user.id,
+        tx,
+      );
     });
-
-    await this.projectCompletion.syncProjectCompletion(
-      existing.projectId,
-      user.id,
-    );
 
     return { message: 'Task deleted' };
   }
 
   async exportCsv(projectId: string, filters: TaskFiltersDto, user: AuthUser) {
-    const result = await this.findByProject(
-      projectId,
-      { ...filters, page: 1, limit: 10000 },
-      user,
-    );
+    await this.projectsService.ensureCanAccess(projectId, user);
+
+    const items = await this.prisma.task.findMany({
+      where: this.buildTaskWhere(projectId, filters),
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        priority: true,
+        category: true,
+        dueDate: true,
+        createdAt: true,
+        assignee: { select: { email: true } },
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: CSV_EXPORT_MAX,
+    });
 
     const header = [
       'id',
@@ -249,7 +264,7 @@ export class TasksService {
       'createdAt',
     ];
 
-    const rows = result.items.map((task) => [
+    const rows = items.map((task) => [
       task.id,
       this.escapeCsv(task.title),
       task.status,
@@ -267,11 +282,51 @@ export class TasksService {
     return csv;
   }
 
+  private buildTaskWhere(
+    projectId: string,
+    filters: TaskFiltersDto,
+  ): Prisma.TaskWhereInput {
+    const where: Prisma.TaskWhereInput = { projectId };
+
+    if (filters.q?.trim()) {
+      const q = filters.q.trim();
+      where.OR = [
+        { title: { contains: q, mode: 'insensitive' } },
+        { description: { contains: q, mode: 'insensitive' } },
+      ];
+    }
+
+    if (filters.status) where.status = filters.status;
+    if (filters.priority) where.priority = filters.priority;
+    if (filters.category) where.category = filters.category;
+    if (filters.assigneeId) where.assigneeId = filters.assigneeId;
+
+    return where;
+  }
+
   private escapeCsv(value: string) {
     if (value.includes(',') || value.includes('"') || value.includes('\n')) {
       return `"${value.replace(/"/g, '""')}"`;
     }
     return value;
+  }
+
+  private async notifyAssigneeIfChanged(
+    actor: AuthUser,
+    projectId: string,
+    task: { id: string; title: string; assigneeId: string | null },
+    previousAssigneeId: string | null,
+  ) {
+    if (!task.assigneeId || task.assigneeId === actor.id) return;
+    if (task.assigneeId === previousAssigneeId) return;
+
+    await this.notifications.notify({
+      userId: task.assigneeId,
+      projectId,
+      taskId: task.id,
+      type: 'TASK_ASSIGNED',
+      message: `${actor.name ?? actor.email} assigned you to "${task.title}"`,
+    });
   }
 
   private async ensureCanModifyTask(projectId: string, user: AuthUser) {

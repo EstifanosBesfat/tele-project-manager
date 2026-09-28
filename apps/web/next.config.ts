@@ -17,9 +17,6 @@ const nextConfig: NextConfig = {
     // Force-correct a stale Railway URL left in the Vercel project env.
     NEXT_PUBLIC_API_URL: nextPublicApiUrl,
   },
-  typescript: {
-    ignoreBuildErrors: true,
-  },
   // Monorepo: trace files from repo root
   outputFileTracingRoot: path.join(__dirname, '../..'),
   images: {
