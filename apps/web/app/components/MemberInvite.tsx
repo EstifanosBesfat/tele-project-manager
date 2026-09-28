@@ -8,9 +8,15 @@ interface Props {
   projectId: string;
   canManage: boolean;
   onMemberAdded?: () => void;
+  showHeading?: boolean;
 }
 
-export default function MemberInvite({ projectId, canManage, onMemberAdded }: Props) {
+export default function MemberInvite({
+  projectId,
+  canManage,
+  onMemberAdded,
+  showHeading = true,
+}: Props) {
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<ProjectRole>('MEMBER');
   const [loading, setLoading] = useState(false);
@@ -42,10 +48,14 @@ export default function MemberInvite({ projectId, canManage, onMemberAdded }: Pr
 
   return (
     <div className="space-y-3">
-      <h4 className="text-sm font-semibold text-gray-700">Invite member</h4>
-      <p className="text-xs text-gray-500">
-        Enter the email of an existing registered user.
-      </p>
+      {showHeading && (
+        <>
+          <h4 className="text-sm font-semibold text-gray-700">Invite member</h4>
+          <p className="text-xs text-gray-500">
+            Enter the email of an existing registered user.
+          </p>
+        </>
+      )}
 
       <form onSubmit={inviteByEmail} className="flex flex-wrap items-end gap-2">
         <input
