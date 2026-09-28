@@ -1,18 +1,18 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQuery, useQueries } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import { MoreHorizontal } from 'lucide-react';
 import { api } from '@/lib/api';
-import type { Project, ProjectProgress } from '@/app/types/project';
+import type { Project, ProjectListResponse, ProjectProgress } from '@/app/types/project';
 import ProgressRing from '@/app/components/ProgressRing';
 import ProjectStatusBadge from '@/app/components/ProjectStatusBadge';
 import OverdueBadge from '@/app/components/OverdueBadge';
 import { getDueDateStatus } from '@/app/lib/dueDateUtils';
-import { buttonVariants } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -31,17 +31,36 @@ import { cn } from '@/lib/utils';
 
 type ProjectRow = Project & { progress?: ProjectProgress };
 
+const PAGE_SIZE = 20;
+
 export default function ProjectsPage() {
   const router = useRouter();
+  const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
 
-  const { data: projects = [], isLoading } = useQuery({
-    queryKey: ['projects'],
+  const { data, isLoading } = useQuery({
+    queryKey: ['projects', page, statusFilter],
     queryFn: async () => {
-      const { data } = await api.get<Project[]>('/projects');
-      return data;
+      const { data: result } = await api.get<ProjectListResponse>('/projects', {
+        params: {
+          page,
+          limit: PAGE_SIZE,
+          ...(statusFilter !== 'ALL' ? { status: statusFilter } : {}),
+        },
+      });
+      return result;
     },
   });
+
+  const projects = data?.items ?? [];
+  const total = data?.total ?? 0;
+  const totalPages = data?.totalPages ?? 0;
+
+  useEffect(() => {
+    if (totalPages > 0 && page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
 
   const progressQueries = useQueries({
     queries: projects.map((p) => ({
@@ -61,10 +80,51 @@ export default function ProjectsPage() {
     }));
   }, [projects, progressQueries]);
 
-  const filteredByStatus = useMemo(() => {
-    if (statusFilter === 'ALL') return rows;
-    return rows.filter((p) => p.status === statusFilter);
-  }, [rows, statusFilter]);
+  function changeStatus(next: string) {
+    setPage(1);
+    setStatusFilter(next);
+  }
+
+  function renderStatusSelect() {
+    return (
+      <Select
+        value={statusFilter}
+        onChange={(e) => changeStatus(e.target.value)}
+        className="w-[160px]"
+      >
+        <option value="ALL">All statuses</option>
+        <option value="ACTIVE">Active</option>
+        <option value="COMPLETED">Completed</option>
+      </Select>
+    );
+  }
+
+  const pagination =
+    totalPages > 1 ? (
+      <div className="flex items-center justify-end gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => setPage((current) => Math.max(1, current - 1))}
+          disabled={page <= 1 || isLoading}
+        >
+          Previous
+        </Button>
+        <span className="text-sm text-muted-foreground">
+          Page {page} of {totalPages}
+        </span>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => setPage((current) => current + 1)}
+          disabled={page >= totalPages || isLoading}
+        >
+          Next
+        </Button>
+      </div>
+    ) : null;
 
   const columns = useMemo<ColumnDef<ProjectRow>[]>(
     () => [
@@ -240,7 +300,7 @@ export default function ProjectsPage() {
         </Link>
       </div>
 
-      {!isLoading && projects.length === 0 && (
+      {!isLoading && total === 0 && statusFilter === 'ALL' && (
         <div className="rounded-lg border border-dashed border-border bg-muted/40 px-6 py-12 text-center">
           <p className="text-base font-semibold text-foreground">No projects yet</p>
           <p className="mb-4 mt-1 text-sm text-muted-foreground">
@@ -257,15 +317,17 @@ export default function ProjectsPage() {
         </div>
       )}
 
+      <div className="flex lg:hidden">{renderStatusSelect()}</div>
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:hidden">
         {isLoading ? (
           <p className="text-sm text-muted-foreground">Loading projects…</p>
-        ) : filteredByStatus.length === 0 && projects.length > 0 ? (
+        ) : total === 0 && statusFilter !== 'ALL' ? (
           <p className="col-span-full py-8 text-center text-sm text-muted-foreground">
             No projects match your filters.
           </p>
         ) : (
-          filteredByStatus.map((p) => (
+          rows.map((p) => (
             <Card key={p.id} className="shadow-sm">
               <CardContent className="p-4">
                 <div className="flex items-start gap-3">
@@ -297,28 +359,22 @@ export default function ProjectsPage() {
       </div>
 
       <div className="hidden lg:block">
-        {(projects.length > 0 || isLoading) && (
+        {(total > 0 || isLoading || statusFilter !== 'ALL') && (
           <DataTable
             columns={columns}
-            data={filteredByStatus}
+            data={rows}
             filterColumn="name"
             filterPlaceholder="Filter projects..."
             isLoading={isLoading}
             emptyMessage="No projects found."
-            toolbar={
-              <Select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="w-[160px]"
-              >
-                <option value="ALL">All statuses</option>
-                <option value="ACTIVE">Active</option>
-                <option value="COMPLETED">Completed</option>
-              </Select>
-            }
+            pageSize={PAGE_SIZE}
+            showPagination={false}
+            toolbar={renderStatusSelect()}
           />
         )}
       </div>
+
+      {pagination}
     </div>
   );
 }

@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
@@ -14,7 +15,11 @@ import { ProjectMemberGuard } from '../common/guards/project-member.guard';
 import { ProjectOwnerGuard } from '../common/guards/project-owner.guard';
 import { AuthUser } from '../common/types/auth-user.type';
 import { InviteMemberDto, UpdateMemberDto } from './dto/member.dto';
-import { CreateProjectDto, UpdateProjectDto } from './dto/project.dto';
+import {
+  CreateProjectDto,
+  ListProjectsQueryDto,
+  UpdateProjectDto,
+} from './dto/project.dto';
 import { ProjectsService } from './projects.service';
 
 @ApiTags('projects')
@@ -24,8 +29,11 @@ export class ProjectsController {
   constructor(private readonly projectsService: ProjectsService) {}
 
   @Get()
-  findAll(@CurrentUser() user: AuthUser) {
-    return this.projectsService.findAll(user);
+  findAll(
+    @CurrentUser() user: AuthUser,
+    @Query() query: ListProjectsQueryDto,
+  ) {
+    return this.projectsService.findAll(user, query);
   }
 
   @Post()

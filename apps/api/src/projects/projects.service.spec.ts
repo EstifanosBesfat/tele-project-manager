@@ -20,6 +20,7 @@ function createPrismaMock() {
   return {
     project: {
       findMany: jest.fn().mockResolvedValue([]),
+      count: jest.fn().mockResolvedValue(0),
     },
     projectMember: {
       findUnique: jest.fn(),
@@ -42,13 +43,45 @@ describe('ProjectsService access', () => {
 
     await service.findAll(buildUser({ role: Role.ADMIN }));
     expect(prismaMock.project.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: {} }),
+      expect.objectContaining({ where: {}, skip: 0, take: 20 }),
     );
 
     await service.findAll(buildUser({ id: 'member-1', role: Role.USER }));
     expect(prismaMock.project.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { members: { some: { userId: 'member-1' } } },
+        skip: 0,
+        take: 20,
+      }),
+    );
+  });
+
+  it('pages the project list and filters by name', async () => {
+    const prismaMock = createPrismaMock();
+    prismaMock.project.findMany.mockResolvedValue([{ id: 'p-21' }]);
+    prismaMock.project.count.mockResolvedValue(21);
+    const service = buildService(prismaMock);
+
+    const result = await service.findAll(buildUser({ role: Role.ADMIN }), {
+      page: 2,
+      limit: 10,
+      q: 'alpha',
+    });
+
+    expect(result).toEqual({
+      items: [{ id: 'p-21' }],
+      total: 21,
+      page: 2,
+      limit: 10,
+      totalPages: 3,
+    });
+    expect(prismaMock.project.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          name: { contains: 'alpha', mode: 'insensitive' },
+        },
+        skip: 10,
+        take: 10,
       }),
     );
   });

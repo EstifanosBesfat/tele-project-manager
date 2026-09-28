@@ -64,13 +64,10 @@ export default function CommandPalette() {
     setLoading(true);
     debounceRef.current = setTimeout(async () => {
       try {
-        const { data } = await api.get<ProjectResult[]>('/projects');
-        const lower = q.trim().toLowerCase();
-        setResults(
-          data
-            .filter((p) => p.name.toLowerCase().includes(lower))
-            .slice(0, 6),
-        );
+        const { data } = await api.get<{ items: ProjectResult[] }>('/projects', {
+          params: { q: q.trim(), limit: 6 },
+        });
+        setResults(data.items);
       } catch {
         setResults([]);
       } finally {
