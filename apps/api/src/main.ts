@@ -22,22 +22,30 @@ async function bootstrap() {
     credentials: true,
   });
 
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('EthioTelecom Project Manager API')
-    .setDescription('REST API for project and task management')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .build();
+  const swaggerEnabled =
+    process.env.ENABLE_SWAGGER === 'true' ||
+    process.env.NODE_ENV !== 'production';
 
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('api/docs', app, document, {
-    swaggerOptions: { persistAuthorization: true },
-  });
+  if (swaggerEnabled) {
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle('EthioTelecom Project Manager API')
+      .setDescription('REST API for project and task management')
+      .setVersion('1.0')
+      .addBearerAuth()
+      .build();
+
+    const document = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup('api/docs', app, document, {
+      swaggerOptions: { persistAuthorization: true },
+    });
+  }
 
   const port = Number(process.env.PORT) || 4000;
   await app.listen(port);
   console.log(`API listening on http://localhost:${port}/api`);
-  console.log(`Swagger docs at http://localhost:${port}/api/docs`);
+  if (swaggerEnabled) {
+    console.log(`Swagger docs at http://localhost:${port}/api/docs`);
+  }
 }
 
 bootstrap();

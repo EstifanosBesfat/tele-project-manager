@@ -1,6 +1,9 @@
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool, type PoolConfig } from 'pg';
+import { resolvePoolMax } from './pool-max';
+
+export { resolvePoolMax } from './pool-max';
 
 declare global {
   // eslint-disable-next-line no-var
@@ -16,7 +19,7 @@ function buildPoolConfig(databaseUrl: string): PoolConfig {
     connectionString: databaseUrl,
     // Neon requires TLS; local Docker Postgres does not.
     ...(isNeon ? { ssl: { rejectUnauthorized: false } } : {}),
-    max: 10,
+    max: resolvePoolMax(),
   };
 }
 
