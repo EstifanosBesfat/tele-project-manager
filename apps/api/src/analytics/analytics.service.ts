@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { ProjectStatus, TaskStatus } from '@ethio/database';
+import { Prisma, ProjectStatus, Role, TaskStatus } from '@ethio/database';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthUser } from '../common/types/auth-user.type';
 
@@ -23,8 +23,21 @@ function getLast7Days() {
 export class AnalyticsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async getDashboard(_user: AuthUser) {
+  async getDashboard(user: AuthUser) {
     const now = new Date();
+
+    // ADMIN sees org-wide totals. Everyone else only sees data for projects
+    // they are a member of — matching the access rule ProjectsService.findAll
+    // already enforces for the project list itself.
+    const projectWhere: Prisma.ProjectWhereInput =
+      user.role === Role.ADMIN
+        ? {}
+        : { members: { some: { userId: user.id } } };
+
+    const taskWhere: Prisma.TaskWhereInput =
+      user.role === Role.ADMIN
+        ? {}
+        : { project: { members: { some: { userId: user.id } } } };
 
     const [
       projectCounts,
@@ -36,24 +49,29 @@ export class AnalyticsService {
     ] = await Promise.all([
       this.prisma.project.groupBy({
         by: ['status'],
+        where: projectWhere,
         _count: { _all: true },
       }),
       this.prisma.task.groupBy({
         by: ['status'],
+        where: taskWhere,
         _count: { _all: true },
       }),
       this.prisma.task.groupBy({
         by: ['category'],
+        where: taskWhere,
         _count: { _all: true },
       }),
       this.prisma.task.count({
         where: {
+          ...taskWhere,
           dueDate: { lt: now },
           status: { not: TaskStatus.DONE },
         },
       }),
       this.prisma.task.findMany({
         where: {
+          ...taskWhere,
           createdAt: {
             gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
           },
@@ -61,6 +79,7 @@ export class AnalyticsService {
         select: { createdAt: true },
       }),
       this.prisma.task.findMany({
+        where: taskWhere,
         select: { category: true, status: true, priority: true },
       }),
     ]);
