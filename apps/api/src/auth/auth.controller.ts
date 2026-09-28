@@ -1,8 +1,10 @@
-import { Body, Controller, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Post, Res, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
+import { SkipThrottle, Throttle, ThrottlerGuard } from '@nestjs/throttler';
+import type { Response } from 'express';
 import { Public } from '../common/decorators/public.decorator';
 import { AUTH_THROTTLE } from './auth-throttle';
+import { attachAuthCookie, clearAuthCookie } from './auth-cookie';
 import { AuthService } from './auth.service';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
@@ -18,14 +20,32 @@ export class AuthController {
 
   @Public()
   @Post('register')
-  register(@Body() dto: RegisterDto) {
-    return this.authService.register(dto);
+  async register(
+    @Body() dto: RegisterDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.authService.register(dto);
+    attachAuthCookie(res, result.accessToken);
+    return result;
   }
 
   @Public()
   @Post('login')
-  login(@Body() dto: LoginDto) {
-    return this.authService.login(dto);
+  async login(
+    @Body() dto: LoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.authService.login(dto);
+    attachAuthCookie(res, result.accessToken);
+    return result;
+  }
+
+  @Public()
+  @SkipThrottle()
+  @Post('logout')
+  logout(@Res({ passthrough: true }) res: Response) {
+    clearAuthCookie(res);
+    return { message: 'Logged out' };
   }
 
   @Public()

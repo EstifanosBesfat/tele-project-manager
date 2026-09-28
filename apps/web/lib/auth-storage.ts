@@ -25,12 +25,17 @@ export function getStoredUser(): AuthUser | null {
   }
 }
 
-export function setAuth(token: string, user: AuthUser): void {
-  localStorage.setItem(TOKEN_KEY, token);
+export function setAuth(_token: string, user: AuthUser): void {
+  localStorage.removeItem(TOKEN_KEY);
   localStorage.setItem(USER_KEY, JSON.stringify(user));
 }
 
 export function clearAuth(): void {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
+}
+
+export function clearStoredToken(): void {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem(TOKEN_KEY);
 }

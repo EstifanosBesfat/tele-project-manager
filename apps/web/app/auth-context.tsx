@@ -8,12 +8,12 @@ import {
   useMemo,
   useState,
 } from 'react';
-import { api, getApiErrorMessage } from '@/lib/api';
+import { api } from '@/lib/api';
 import {
   type AuthUser,
   clearAuth,
+  clearStoredToken,
   getStoredUser,
-  getToken,
   setAuth,
 } from '@/lib/auth-storage';
 
@@ -35,13 +35,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const storedToken = getToken();
+    clearStoredToken();
     const storedUser = getStoredUser();
-    if (storedToken && storedUser) {
-      setToken(storedToken);
+    if (storedUser) {
       setUser(storedUser);
     }
-    setLoading(false);
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await api.get<AuthUser>('/users/me');
+        if (cancelled) return;
+        setAuth('', data);
+        setUser(data);
+      } catch {
+        if (cancelled) return;
+        clearAuth();
+        setUser(null);
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
@@ -50,7 +70,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       { email, password },
     );
     setAuth(data.accessToken, data.user);
-    setToken(data.accessToken);
+    setToken(null);
     setUser(data.user);
   }, []);
 
@@ -61,24 +81,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         { name, email, password },
       );
       setAuth(data.accessToken, data.user);
-      setToken(data.accessToken);
+      setToken(null);
       setUser(data.user);
     },
     [],
   );
 
   const logout = useCallback(() => {
+    void api.post('/auth/logout').catch(() => undefined);
     clearAuth();
     setToken(null);
     setUser(null);
   }, []);
 
   const refreshUser = useCallback(async () => {
-    const currentToken = getToken();
-    if (!currentToken) return;
     try {
       const { data } = await api.get<AuthUser>('/users/me');
-      setAuth(currentToken, data);
+      setAuth('', data);
       setUser(data);
     } catch {
       // ignore — interceptor handles 401

@@ -23,7 +23,6 @@ import OverdueBadge from '@/app/components/OverdueBadge';
 import Avatar from '@/app/components/Avatar';
 import { getDueDateStatus } from '@/app/lib/dueDateUtils';
 import { API_BASE_URL, getApiErrorMessage } from '@/lib/api';
-import { getToken } from '@/lib/auth-storage';
 import { buttonVariants } from '@/components/ui/button';
 
 const taskColumnHelper = createColumnHelper<Task>();
@@ -198,9 +197,8 @@ export default function ProjectDetailPage({
     setExporting(true);
     setExportError('');
     try {
-      const token = getToken();
       const res = await fetch(`${API_BASE_URL}/projects/${id}/tasks/export`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: 'include',
       });
       if (!res.ok) throw new Error('Export failed');
       const blob = await res.blob();
