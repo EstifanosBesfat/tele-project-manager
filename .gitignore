@@ -36,7 +36,6 @@ yarn-error.log*
 .env
 .env.*
 !.env.example
-!.env.production
 !apps/web/.env.production
 apps/web/.env.local
 apps/api/.env
