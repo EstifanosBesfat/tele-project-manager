@@ -30,6 +30,15 @@ export const api = axios.create({
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    if (axios.isAxiosError(error)) {
+      const data = error.response?.data as { message?: string | string[] } | undefined;
+      if (Array.isArray(data?.message) && data.message.length > 0) {
+        error.message = data.message.join(', ');
+      } else if (typeof data?.message === 'string' && data.message.trim()) {
+        error.message = data.message;
+      }
+    }
+
     if (error.response?.status === 401 && typeof window !== 'undefined') {
       const path = window.location.pathname;
       if (!path.startsWith('/auth')) {

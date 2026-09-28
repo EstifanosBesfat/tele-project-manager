@@ -54,13 +54,17 @@ export class CommentsService {
       },
     });
 
-    await this.createMentionNotifications(
-      dto.content,
-      user,
-      task.projectId,
-      taskId,
-      task.title,
-    );
+    try {
+      await this.createMentionNotifications(
+        dto.content,
+        user,
+        task.projectId,
+        taskId,
+        task.title,
+      );
+    } catch (error) {
+      console.error('Failed to create mention notifications', error);
+    }
 
     return comment;
   }

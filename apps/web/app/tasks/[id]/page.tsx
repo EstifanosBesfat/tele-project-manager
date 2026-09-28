@@ -3,7 +3,8 @@
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import axios from 'axios';
+import { api, getApiErrorMessage } from '@/lib/api';
 import { useAuth } from '@/app/auth-context';
 import type { Task } from '@/app/types/task';
 import PriorityBadge from '@/app/components/PriorityBadge';
@@ -22,21 +23,30 @@ export default function TaskDetailPage() {
   const id = typeof raw === 'string' ? raw : Array.isArray(raw) ? raw[0] ?? '' : '';
   const { user } = useAuth();
 
-  const { data: task, isLoading } = useQuery({
-    queryKey: ['task', id],
+  const { data: task, isPending, isError, error } = useQuery({
+    queryKey: ['task', id, user?.id],
     queryFn: async () => {
       const { data } = await api.get<Task>(`/tasks/${id}`);
       return data;
     },
-    enabled: Boolean(id),
+    enabled: Boolean(id) && Boolean(user?.id),
   });
 
-  if (isLoading) {
+  const accessDenied =
+    isError &&
+    axios.isAxiosError(error) &&
+    (error.response?.status === 403 || error.response?.status === 404);
+
+  if (isPending || !user) {
     return <p className="text-sm text-gray-500">Loading task…</p>;
   }
 
-  if (!task) {
-    return <p className="text-sm text-danger">Task not found.</p>;
+  if (accessDenied || !task) {
+    return (
+      <p className="text-sm text-danger">
+        {getApiErrorMessage(error, 'Task not found.')}
+      </p>
+    );
   }
 
   const statusColor =

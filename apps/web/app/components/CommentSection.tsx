@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import Avatar from './Avatar';
-import { renderMentionContent } from '@/lib/mentions';
-import { api } from '@/lib/api';
+import { getTrailingMention, renderMentionContent } from '@/lib/mentions';
+import { api, getApiErrorMessage } from '@/lib/api';
 
 interface Author {
   id: string;
@@ -105,13 +105,18 @@ export default function CommentSection({
 
   const handleContentChange = (value: string) => {
     setContent(value);
-    const match = value.match(/@([\w.\u1200-\u137F]*)$/);
-    setMentionQuery(match?.[1] ?? null);
+    const trailing = getTrailingMention(value);
+    setMentionQuery(trailing?.query ?? null);
   };
 
   const insertMention = (user: MentionUser) => {
-    const label = user.name ?? user.email.split('@')[0];
-    const nextValue = content.replace(/@([\w.\u1200-\u137F]*)$/, `@${label} `);
+    const trailing = getTrailingMention(content);
+    const label = trailing?.kind === 'email'
+      ? user.email
+      : (user.name ?? user.email.split('@')[0]);
+    const nextValue = trailing
+      ? content.replace(trailing.pattern, () => `@${label} `)
+      : `${content}@${label} `;
     setContent(nextValue);
     setMentionQuery(null);
     setMentionUsers([]);
@@ -133,7 +138,7 @@ export default function CommentSection({
       setMentionQuery(null);
       setMentionUsers([]);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to post comment');
+      setError(getApiErrorMessage(err, 'Failed to post comment'));
     } finally {
       setSubmitting(false);
     }
@@ -144,7 +149,7 @@ export default function CommentSection({
       await api.delete(`/comments/${commentId}`);
       setComments((prev) => prev.filter((c) => c.id !== commentId));
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Failed to delete comment');
+      alert(getApiErrorMessage(err, 'Failed to delete comment'));
     }
   };
 

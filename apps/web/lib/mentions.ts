@@ -51,9 +51,27 @@ export function resolveMentionedUserIds(
   return [...mentioned];
 }
 
+const TRAILING_EMAIL = /@([\w.+-]+@[\w.-]+\.[a-zA-Z]{2,})$/;
+const TRAILING_NAME = /@([\w.\u1200-\u137F]*)$/;
+
+export function getTrailingMention(value: string): {
+  query: string;
+  kind: 'email' | 'name';
+  pattern: RegExp;
+} | null {
+  const email = value.match(TRAILING_EMAIL);
+  if (email?.[1]) {
+    return { query: email[1], kind: 'email', pattern: TRAILING_EMAIL };
+  }
+
+  const name = value.match(TRAILING_NAME);
+  if (!name) return null;
+  return { query: name[1] ?? '', kind: 'name', pattern: TRAILING_NAME };
+}
+
 export function renderMentionContent(content: string) {
   const combined =
-    /(@[\w.\u1200-\u137F]+(?:\s[\w.\u1200-\u137F]+)*|@[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,})/g;
+    /(@[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}|@[\w.\u1200-\u137F]+(?:\s[\w.\u1200-\u137F]+)*)/g;
   const parts: Array<{ type: 'text' | 'mention'; value: string }> = [];
 
   let lastIndex = 0;
