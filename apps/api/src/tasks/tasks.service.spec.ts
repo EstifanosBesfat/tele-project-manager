@@ -1,5 +1,5 @@
-import { NotFoundException } from '@nestjs/common';
-import { Role } from '@ethio/database';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { ProjectRole, Role } from '@ethio/database';
 import { PrismaService } from '../prisma/prisma.service';
 import { ProjectCompletionService } from '../projects/project-completion.service';
 import { ProjectsService } from '../projects/projects.service';
@@ -11,6 +11,9 @@ function createPrismaMock() {
     task: {
       findUnique: jest.fn(),
       delete: jest.fn().mockResolvedValue({}),
+    },
+    projectMember: {
+      findUnique: jest.fn(),
     },
     activityLog: {
       create: jest.fn().mockResolvedValue({}),
@@ -92,5 +95,35 @@ describe('TasksService.remove', () => {
     );
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
     expect(projectCompletion.syncProjectCompletion).not.toHaveBeenCalled();
+  });
+
+  it('forbids a non-owner member from deleting a task', async () => {
+    const prismaMock = createPrismaMock();
+    prismaMock.task.findUnique.mockResolvedValue({
+      id: 'task-1',
+      projectId: 'proj-1',
+      title: 'Fix fiber cut',
+    });
+    prismaMock.projectMember.findUnique.mockResolvedValue({
+      role: ProjectRole.MEMBER,
+    });
+    const projectCompletion = {
+      syncProjectCompletion: jest.fn(),
+    };
+    const service = new TasksService(
+      prismaMock as unknown as PrismaService,
+      {} as ProjectsService,
+      projectCompletion as unknown as ProjectCompletionService,
+    );
+
+    await expect(
+      service.remove('task-1', {
+        id: 'member-1',
+        email: 'member@example.com',
+        role: Role.USER,
+        name: 'Member',
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 });
