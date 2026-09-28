@@ -203,7 +203,7 @@ export class TasksService {
   async remove(taskId: string, user: AuthUser) {
     const existing = await this.prisma.task.findUnique({
       where: { id: taskId },
-      select: { id: true, projectId: true },
+      select: { id: true, projectId: true, title: true },
     });
 
     if (!existing) {
@@ -212,21 +212,26 @@ export class TasksService {
 
     await this.ensureCanDeleteTask(existing.projectId, user);
 
-    await this.prisma.task.delete({ where: { id: taskId } });
+    // Do not set taskId: the Task row is gone, and a pre-delete log would
+    // cascade-delete with it. Title is kept on newValue for the timeline.
+    await this.prisma.$transaction(async (tx) => {
+      await tx.task.delete({ where: { id: taskId } });
 
-    await this.prisma.activityLog.create({
-      data: {
-        projectId: existing.projectId,
-        taskId,
-        actorId: user.id,
-        action: 'TASK_DELETED',
-      },
+      await tx.activityLog.create({
+        data: {
+          projectId: existing.projectId,
+          actorId: user.id,
+          action: 'TASK_DELETED',
+          newValue: existing.title,
+        },
+      });
+
+      await this.projectCompletion.syncProjectCompletion(
+        existing.projectId,
+        user.id,
+        tx,
+      );
     });
-
-    await this.projectCompletion.syncProjectCompletion(
-      existing.projectId,
-      user.id,
-    );
 
     return { message: 'Task deleted' };
   }

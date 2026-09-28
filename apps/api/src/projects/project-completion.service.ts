@@ -1,18 +1,28 @@
 import { Injectable } from '@nestjs/common';
-import { ProjectStatus, TaskStatus } from '@ethio/database';
+import { Prisma, ProjectStatus, TaskStatus } from '@ethio/database';
 import { PrismaService } from '../prisma/prisma.service';
+
+type CompletionDb = {
+  task: Pick<Prisma.TransactionClient['task'], 'findMany'>;
+  project: Pick<Prisma.TransactionClient['project'], 'findUnique' | 'update'>;
+  activityLog: Pick<Prisma.TransactionClient['activityLog'], 'create'>;
+};
 
 @Injectable()
 export class ProjectCompletionService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async syncProjectCompletion(projectId: string, actorId: string) {
+  async syncProjectCompletion(
+    projectId: string,
+    actorId: string,
+    db: CompletionDb = this.prisma,
+  ) {
     const [tasks, project] = await Promise.all([
-      this.prisma.task.findMany({
+      db.task.findMany({
         where: { projectId },
         select: { status: true },
       }),
-      this.prisma.project.findUnique({
+      db.project.findUnique({
         where: { id: projectId },
         select: { id: true, status: true },
       }),
@@ -25,12 +35,12 @@ export class ProjectCompletionService {
     const allDone = tasks.every((task) => task.status === TaskStatus.DONE);
 
     if (allDone && project.status !== ProjectStatus.COMPLETED) {
-      await this.prisma.project.update({
+      await db.project.update({
         where: { id: projectId },
         data: { status: ProjectStatus.COMPLETED },
       });
 
-      await this.prisma.activityLog.create({
+      await db.activityLog.create({
         data: {
           projectId,
           actorId,
@@ -44,12 +54,12 @@ export class ProjectCompletionService {
     }
 
     if (!allDone && project.status === ProjectStatus.COMPLETED) {
-      await this.prisma.project.update({
+      await db.project.update({
         where: { id: projectId },
         data: { status: ProjectStatus.ACTIVE },
       });
 
-      await this.prisma.activityLog.create({
+      await db.activityLog.create({
         data: {
           projectId,
           actorId,
