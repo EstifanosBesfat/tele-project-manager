@@ -153,6 +153,7 @@ export default function TaskDetailPage({
 
       <CommentSection
         taskId={id}
+        projectId={task.project?.id ?? task.projectId}
         initialComments={task.comments ?? []}
         currentUserId={user?.id}
         userRole={user?.role}

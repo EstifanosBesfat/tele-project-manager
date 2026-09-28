@@ -26,6 +26,7 @@ interface MentionUser {
 
 interface Props {
   taskId: string;
+  projectId?: string;
   initialComments?: Comment[];
   currentUserId?: string | null;
   userRole?: string | null;
@@ -61,6 +62,7 @@ function CommentBody({ content }: { content: string }) {
 
 export default function CommentSection({
   taskId,
+  projectId,
   initialComments = [],
   currentUserId,
   userRole,
@@ -80,15 +82,17 @@ export default function CommentSection({
     currentUserId && (comment.author.id === currentUserId || userRole === 'ADMIN');
 
   useEffect(() => {
-    if (!mentionQuery || mentionQuery.length < 1) {
+    if (!mentionQuery || mentionQuery.length < 2) {
       setMentionUsers([]);
       return;
     }
 
     const timer = setTimeout(async () => {
       try {
+        const params = new URLSearchParams({ q: mentionQuery });
+        if (projectId) params.set('projectId', projectId);
         const { data } = await api.get<MentionUser[]>(
-          `/users/search?q=${encodeURIComponent(mentionQuery)}`,
+          `/users/search?${params.toString()}`,
         );
         setMentionUsers(data);
       } catch {
@@ -97,7 +101,7 @@ export default function CommentSection({
     }, 200);
 
     return () => clearTimeout(timer);
-  }, [mentionQuery]);
+  }, [mentionQuery, projectId]);
 
   const handleContentChange = (value: string) => {
     setContent(value);

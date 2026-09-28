@@ -1,26 +1,45 @@
 import {
+  BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@ethio/database';
+import { Prisma, Role } from '@ethio/database';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuthUser } from '../common/types/auth-user.type';
 import { AdminUpdateUserDto } from './dto/admin-update-user.dto';
 
 @Injectable()
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async searchUsers(query?: string) {
+  async searchUsers(caller: AuthUser, query: string, projectId?: string) {
+    const q = query.trim();
+    if (q.length < 2) {
+      throw new BadRequestException(
+        'Search query must be at least 2 characters',
+      );
+    }
+
     const where: Prisma.UserWhereInput = {
       isActive: true,
-    };
-
-    if (query?.trim()) {
-      const q = query.trim();
-      where.OR = [
+      OR: [
         { name: { contains: q, mode: 'insensitive' } },
         { email: { contains: q, mode: 'insensitive' } },
-      ];
+      ],
+    };
+
+    if (projectId) {
+      await this.ensureCanSearchProject(projectId, caller);
+      where.memberships = { some: { projectId } };
+    } else if (caller.role !== Role.ADMIN) {
+      // Without a project, a regular user may only see people they already
+      // share a project with — not the whole org directory.
+      where.memberships = {
+        some: {
+          project: { members: { some: { userId: caller.id } } },
+        },
+      };
     }
 
     return this.prisma.user.findMany({
@@ -30,11 +49,36 @@ export class UsersService {
         name: true,
         email: true,
         image: true,
-        role: true,
+        ...(caller.role === Role.ADMIN ? { role: true as const } : {}),
       },
       take: 20,
       orderBy: { name: 'asc' },
     });
+  }
+
+  private async ensureCanSearchProject(projectId: string, caller: AuthUser) {
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId },
+      select: { id: true },
+    });
+
+    if (!project) {
+      throw new NotFoundException('Project not found');
+    }
+
+    if (caller.role === Role.ADMIN) {
+      return;
+    }
+
+    const membership = await this.prisma.projectMember.findUnique({
+      where: {
+        projectId_userId: { projectId, userId: caller.id },
+      },
+    });
+
+    if (!membership) {
+      throw new ForbiddenException('You are not a member of this project');
+    }
   }
 
   async listUsers() {

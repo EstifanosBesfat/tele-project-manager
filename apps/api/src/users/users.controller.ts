@@ -24,8 +24,11 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get('search')
-  searchUsers(@Query() query: SearchUsersQueryDto) {
-    return this.usersService.searchUsers(query.q);
+  searchUsers(
+    @Query() query: SearchUsersQueryDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.usersService.searchUsers(user, query.q, query.projectId);
   }
 
   @Get()
