@@ -43,9 +43,9 @@ export class AnalyticsService {
       projectCounts,
       tasksByStatus,
       tasksByCategory,
+      tasksByPriority,
       overdueCount,
       recentTasks,
-      allTasks,
     ] = await Promise.all([
       this.prisma.project.groupBy({
         by: ['status'],
@@ -59,6 +59,11 @@ export class AnalyticsService {
       }),
       this.prisma.task.groupBy({
         by: ['category'],
+        where: taskWhere,
+        _count: { _all: true },
+      }),
+      this.prisma.task.groupBy({
+        by: ['priority'],
         where: taskWhere,
         _count: { _all: true },
       }),
@@ -77,10 +82,6 @@ export class AnalyticsService {
           },
         },
         select: { createdAt: true },
-      }),
-      this.prisma.task.findMany({
-        where: taskWhere,
-        select: { category: true, status: true, priority: true },
       }),
     ]);
 
@@ -128,22 +129,19 @@ export class AnalyticsService {
       return { label, count };
     });
 
-    const priorityMap: Record<string, number> = {};
-    for (const task of allTasks) {
-      priorityMap[task.priority] = (priorityMap[task.priority] ?? 0) + 1;
-    }
+    const byPriority = tasksByPriority.map((item) => ({
+      priority: item.priority,
+      count: item._count._all,
+    }));
 
     return {
       projects,
       byStatus,
       byCategory,
       overdue: overdueCount,
-      byPriority: Object.entries(priorityMap).map(([priority, count]) => ({
-        priority,
-        count,
-      })),
+      byPriority,
       trend,
-      totalTasks: allTasks.length,
+      totalTasks: tasksByStatus.reduce((sum, item) => sum + item._count._all, 0),
     };
   }
 }

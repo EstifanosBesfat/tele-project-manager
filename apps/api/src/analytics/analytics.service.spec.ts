@@ -45,10 +45,15 @@ describe('AnalyticsService.getDashboard', () => {
       expect.objectContaining({ where: expectedProjectWhere }),
     );
 
-    // task.groupBy is called twice (status, category) — both must be scoped.
+    // task.groupBy is called for status, category, and priority — all scoped.
+    expect(prismaMock.task.groupBy).toHaveBeenCalledTimes(3);
     for (const call of prismaMock.task.groupBy.mock.calls) {
       expect(call[0]).toEqual(expect.objectContaining({ where: expectedTaskWhere }));
     }
+
+    expect(prismaMock.task.groupBy).toHaveBeenCalledWith(
+      expect.objectContaining({ by: ['priority'] }),
+    );
 
     expect(prismaMock.task.count).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -56,14 +61,14 @@ describe('AnalyticsService.getDashboard', () => {
       }),
     );
 
-    // task.findMany is called twice (recent trend, priority breakdown) — both scoped.
-    for (const call of prismaMock.task.findMany.mock.calls) {
-      expect(call[0]).toEqual(
-        expect.objectContaining({
-          where: expect.objectContaining(expectedTaskWhere),
-        }),
-      );
-    }
+    // Only the 7-day trend loads rows, and only createdAt.
+    expect(prismaMock.task.findMany).toHaveBeenCalledTimes(1);
+    expect(prismaMock.task.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining(expectedTaskWhere),
+        select: { createdAt: true },
+      }),
+    );
   });
 
   it('does not scope queries for an ADMIN user (org-wide dashboard)', async () => {
@@ -79,12 +84,38 @@ describe('AnalyticsService.getDashboard', () => {
       expect.objectContaining({ where: {} }),
     );
 
+    expect(prismaMock.task.groupBy).toHaveBeenCalledTimes(3);
     for (const call of prismaMock.task.groupBy.mock.calls) {
       expect(call[0]).toEqual(expect.objectContaining({ where: {} }));
     }
 
+    expect(prismaMock.task.findMany).toHaveBeenCalledTimes(1);
     expect(prismaMock.task.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: {} }),
+      expect.objectContaining({
+        where: expect.objectContaining({ createdAt: expect.any(Object) }),
+        select: { createdAt: true },
+      }),
     );
+  });
+
+  it('aggregates totalTasks from status groupBy instead of loading every row', async () => {
+    const prismaMock = createPrismaMock();
+    prismaMock.task.groupBy.mockImplementation(async (args: { by: string[] }) => {
+      if (args.by[0] === 'status') {
+        return [
+          { status: 'TODO', _count: { _all: 2 } },
+          { status: 'DONE', _count: { _all: 3 } },
+        ];
+      }
+      return [];
+    });
+    const service = new AnalyticsService(
+      prismaMock as unknown as PrismaService,
+    );
+
+    const result = await service.getDashboard(buildUser({ role: Role.ADMIN }));
+
+    expect(result.totalTasks).toBe(5);
+    expect(prismaMock.task.findMany).toHaveBeenCalledTimes(1);
   });
 });

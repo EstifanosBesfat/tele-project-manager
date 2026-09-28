@@ -10,6 +10,8 @@ import { ProjectCompletionService } from '../projects/project-completion.service
 import { ProjectsService } from '../projects/projects.service';
 import { CreateTaskDto, TaskFiltersDto, UpdateTaskDto } from './dto/task.dto';
 
+const CSV_EXPORT_MAX = 5000;
+
 const taskListInclude = {
   reporter: { select: { id: true, name: true, email: true, image: true } },
   assignee: { select: { id: true, name: true, email: true, image: true } },
@@ -51,20 +53,7 @@ export class TasksService {
     const limit = Math.min(100, Math.max(1, filters.limit ?? 20));
     const skip = (page - 1) * limit;
 
-    const where: Prisma.TaskWhereInput = { projectId };
-
-    if (filters.q?.trim()) {
-      const q = filters.q.trim();
-      where.OR = [
-        { title: { contains: q, mode: 'insensitive' } },
-        { description: { contains: q, mode: 'insensitive' } },
-      ];
-    }
-
-    if (filters.status) where.status = filters.status;
-    if (filters.priority) where.priority = filters.priority;
-    if (filters.category) where.category = filters.category;
-    if (filters.assigneeId) where.assigneeId = filters.assigneeId;
+    const where = this.buildTaskWhere(projectId, filters);
 
     const [items, total] = await Promise.all([
       this.prisma.task.findMany({
@@ -237,11 +226,23 @@ export class TasksService {
   }
 
   async exportCsv(projectId: string, filters: TaskFiltersDto, user: AuthUser) {
-    const result = await this.findByProject(
-      projectId,
-      { ...filters, page: 1, limit: 10000 },
-      user,
-    );
+    await this.projectsService.ensureCanAccess(projectId, user);
+
+    const items = await this.prisma.task.findMany({
+      where: this.buildTaskWhere(projectId, filters),
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        priority: true,
+        category: true,
+        dueDate: true,
+        createdAt: true,
+        assignee: { select: { email: true } },
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: CSV_EXPORT_MAX,
+    });
 
     const header = [
       'id',
@@ -254,7 +255,7 @@ export class TasksService {
       'createdAt',
     ];
 
-    const rows = result.items.map((task) => [
+    const rows = items.map((task) => [
       task.id,
       this.escapeCsv(task.title),
       task.status,
@@ -270,6 +271,28 @@ export class TasksService {
     );
 
     return csv;
+  }
+
+  private buildTaskWhere(
+    projectId: string,
+    filters: TaskFiltersDto,
+  ): Prisma.TaskWhereInput {
+    const where: Prisma.TaskWhereInput = { projectId };
+
+    if (filters.q?.trim()) {
+      const q = filters.q.trim();
+      where.OR = [
+        { title: { contains: q, mode: 'insensitive' } },
+        { description: { contains: q, mode: 'insensitive' } },
+      ];
+    }
+
+    if (filters.status) where.status = filters.status;
+    if (filters.priority) where.priority = filters.priority;
+    if (filters.category) where.category = filters.category;
+    if (filters.assigneeId) where.assigneeId = filters.assigneeId;
+
+    return where;
   }
 
   private escapeCsv(value: string) {

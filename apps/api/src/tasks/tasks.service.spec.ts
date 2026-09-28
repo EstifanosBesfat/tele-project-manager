@@ -10,6 +10,7 @@ function createPrismaMock() {
   const prismaMock = {
     task: {
       findUnique: jest.fn(),
+      findMany: jest.fn().mockResolvedValue([]),
       delete: jest.fn().mockResolvedValue({}),
     },
     projectMember: {
@@ -125,5 +126,47 @@ describe('TasksService.remove', () => {
       }),
     ).rejects.toBeInstanceOf(ForbiddenException);
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+});
+
+describe('TasksService.exportCsv', () => {
+  it('exports a slim column set with a 5000-row cap instead of the list page size', async () => {
+    const prismaMock = createPrismaMock();
+    prismaMock.task.findMany.mockResolvedValue([
+      {
+        id: 'task-1',
+        title: 'Fix fiber',
+        status: 'TODO',
+        priority: 'HIGH',
+        category: 'FIBER_BROADBAND',
+        dueDate: null,
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        assignee: { email: 'staff@example.com' },
+      },
+    ]);
+    const projectsService = {
+      ensureCanAccess: jest.fn().mockResolvedValue(undefined),
+    };
+    const service = new TasksService(
+      prismaMock as unknown as PrismaService,
+      projectsService as unknown as ProjectsService,
+      {} as ProjectCompletionService,
+    );
+
+    const csv = await service.exportCsv('proj-1', {}, adminUser());
+
+    expect(prismaMock.task.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { projectId: 'proj-1' },
+        take: 5000,
+        select: expect.objectContaining({
+          id: true,
+          title: true,
+          assignee: { select: { email: true } },
+        }),
+      }),
+    );
+    expect(csv).toContain('id,title,status,priority,category,assignee,dueDate,createdAt');
+    expect(csv).toContain('staff@example.com');
   });
 });
